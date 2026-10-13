@@ -60,3 +60,45 @@ node server.js
   ```php
   Auth::user()->getActiveAccount();
   ```
+
+---
+
+## 5. Deployment ke VPS aaPanel & Error 500
+
+### A. Git Dubious Ownership Saat Pull / Init
+- **Penyebab:** Direktori dibuat oleh user `www` (aaPanel) sementara Git dijalankan sebagai `root`.
+- **Solusi:**
+  ```bash
+  git config --global --add safe.directory /www/wwwroot/modsysv4.agungds.web.id
+  ```
+
+### B. HTTP ERROR 500 Setelah Deploy
+- **Penyebab 1: Izin Tulis User Web:** Web server Apache berjalan sebagai user `www`, sehingga gagal menulis ke folder cache.
+  ```bash
+  chown -R www:www /www/wwwroot/modsysv4.agungds.web.id
+  chmod -R 775 storage bootstrap/cache
+  ```
+- **Penyebab 2: Running Directory di aaPanel:** Default aaPanel mengarah ke root. Wajib diubah ke `/public` di menu **Site &rarr; Directory &rarr; Running directory: `/public`**.
+- **Penyebab 3: File `.env` & `APP_KEY`:** Pastikan `APP_KEY` sama persis dengan lokal agar tidak memicu error decrypt database credentials.
+
+---
+
+## 6. Google OAuth: `Error 400: redirect_uri_mismatch`
+- **Penyebab:** Google menolak permintaan login karena URL redirect domain VPS belum didaftarkan di Google Cloud Console.
+- **Solusi:**
+  1. Masuk ke [Google Cloud Console Credentials](https://console.cloud.google.com/apis/credentials).
+  2. Buka Client ID Anda.
+  3. Pada **Authorized redirect URIs**, tambahkan:
+     ```text
+     https://modsysv4.agungds.web.id/auth/google/callback
+     ```
+  4. Pada **Authorized JavaScript origins**, tambahkan:
+     ```text
+     https://modsysv4.agungds.web.id
+     ```
+  5. Pastikan `.env` server memiliki:
+     ```env
+     GOOGLE_REDIRECT_URI=https://modsysv4.agungds.web.id/auth/google/callback
+     ```
+  6. Jalankan `php artisan config:clear`.
+

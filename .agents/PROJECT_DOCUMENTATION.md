@@ -116,6 +116,53 @@ Dokumen ini berisi rangkuman arsitektur, panduan teknis, dan catatan penting pen
   - `SendPengingatPiutangCommand` untuk pengiriman terjadwal via cron scheduler.
 - **Fitur Antarmuka (`settings.blade.php`):**
   - Chip tombol penyisip variabel cepat (`.btn-chip`) dengan sekali klik.
-  - Kotak simulasi *Live WhatsApp Chat Bubble Preview* real-time.
+  - Mockup Smartphone Titanium dengan antarmuka WhatsApp asli (Header hijau `#008069`, gelembung hijau `#D9FDD3`, ekor pesan, dan centang dua biru dibaca).
+  - Parser live Markdown WhatsApp (`*teks tebal*` & `_teks miring_`).
   - Tombol reset ke template bawaan (*default*).
+
+---
+
+## 7. Repositori Git & Deployment VPS
+
+- **URL GitHub:** `https://github.com/arounduslivelife/modsysv4`
+- **Branch Produksi:** `main`
+- **Lokasi Direktori VPS (aaPanel):** `/www/wwwroot/modsysv4.agungds.web.id`
+- **Domain Produksi:** `https://modsysv4.agungds.web.id`
+- **Perintah Update / Pull di VPS:**
+  ```bash
+  cd /www/wwwroot/modsysv4.agungds.web.id
+  git pull origin main
+  php artisan optimize:clear
+  ```
+- **Aturan aaPanel:**
+  - *Running Directory:* Wajib disetel ke `/public`.
+  - *URL Rewrite:* Menggunakan aturan default Apache `.htaccess` (sudah sesuai otomatis).
+  - *Izin File:* `chown -R www:www ...` dan `chmod -R 775 storage bootstrap/cache`.
+
+---
+
+## 8. Otomasi Cron Scheduler via URL Link
+
+Selain melalui CLI `php artisan schedule:run`, sistem menyediakan endpoint HTTP yang aman untuk dieksekusi via **aaPanel Cron (Access URL)** atau webhook eksternal:
+
+- **Key Pengaman:** Divalidasi via parameter `?key=` atau header `X-Cron-Key` mencocokkan `CRON_SECRET` / `WA_GATEWAY_KEY` (`modsysv4_secret_key_2026`).
+- **Endpoint URL:**
+  1. `https://modsysv4.agungds.web.id/cron/send-piutang?key=modsysv4_secret_key_2026` (Jadwal normal)
+  2. `https://modsysv4.agungds.web.id/cron/send-piutang?key=modsysv4_secret_key_2026&force=1` (Bypass jendela jam kirim untuk testing)
+  3. `https://modsysv4.agungds.web.id/cron/schedule-run?key=modsysv4_secret_key_2026` (Eksekusi seluruh task scheduler Laravel)
+
+---
+
+## 9. Konfigurasi Google OAuth 2.0
+
+- **Client ID:** `98250414104-4ehiqhph71h5nn6jfmkvos7sk431cmcv.apps.googleusercontent.com`
+- **Authorized Redirect URIs (Google Cloud Console):**
+  - Lokal: `http://localhost/acosysv4modul/auth/google/callback`
+  - VPS: `https://modsysv4.agungds.web.id/auth/google/callback`
+- **Authorized JavaScript Origins:**
+  - Lokal: `http://localhost`
+  - VPS: `https://modsysv4.agungds.web.id`
+- **Konfigurasi `.env`:**
+  - `GOOGLE_REDIRECT_URI=https://modsysv4.agungds.web.id/auth/google/callback`
+
 
