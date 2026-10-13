@@ -150,15 +150,26 @@ node server.js
 ```
 *(Untuk lingkungan produksi di VPS, jalankan menggunakan PM2 atau panel Node.js aaPanel).*
 
-### 4. Menjalankan Scheduler Otomasi Pengingat Piutang
+### 4. Menjalankan Otomasi Pengingat Piutang (Cron Job)
 
+Tersedia 2 metode yang dapat Anda gunakan:
+
+#### Opsi A: Menggunakan URL Link / Webhook (Sangat Mudah di aaPanel)
+Anda dapat menggunakan fitur **Cron &rarr; Access URL** di aaPanel atau layanan seperti cron-job.org:
+- **URL Pengingat Piutang:**  
+  `https://modsys.agungds.web.id/cron/send-piutang?key=modsysv4_secret_key_2026`
+- **URL Paksa Pengiriman Sekarang (Testing / Bypass Jam):**  
+  `https://modsys.agungds.web.id/cron/send-piutang?key=modsysv4_secret_key_2026&force=1`
+- **URL Scheduler Laravel Lengkap:**  
+  `https://modsys.agungds.web.id/cron/schedule-run?key=modsysv4_secret_key_2026`
+
+#### Opsi B: Menggunakan Crontab Linux / Shell Script
 Tambahkan baris berikut ke crontab server produksi (`crontab -e`):
-
 ```bash
 * * * * * cd /path/to/modsysv4 && php artisan schedule:run >> /dev/null 2>&1
 ```
 
-Atau uji pengiriman secara langsung melalui CLI:
+Atau uji pengiriman langsung via terminal:
 ```bash
 # Jalankan pengingat otomatis harian
 php artisan reminder:send-piutang

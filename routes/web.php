@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\AdminController;
 use App\Http\Controllers\AuthController;
+use App\Http\Controllers\CronController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\ModuleRequestController;
 use App\Http\Controllers\PengingatPiutangController;
@@ -24,6 +25,16 @@ Route::get('/privacy', function () {
 Route::get('/terms', function () {
     return view('landing.terms');
 })->name('landing.terms');
+
+/*
+|--------------------------------------------------------------------------
+| Webhook / Cron Link Trigger Routes (Akses Otomasi via URL)
+|--------------------------------------------------------------------------
+*/
+Route::prefix('cron')->group(function () {
+    Route::get('/send-piutang', [CronController::class, 'sendPiutang'])->name('cron.send-piutang');
+    Route::get('/schedule-run', [CronController::class, 'scheduleRun'])->name('cron.schedule-run');
+});
 
 /*
 |--------------------------------------------------------------------------
