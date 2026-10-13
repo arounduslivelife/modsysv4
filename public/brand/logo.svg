@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 260 64" width="520" height="128">
+  <rect width="64" height="64" rx="14" fill="#2F5BEA"/>
+  <rect x="14" y="14" width="16" height="16" rx="4" fill="#FFFFFF"/>
+  <rect x="34" y="14" width="16" height="16" rx="4" fill="#FFFFFF"/>
+  <rect x="14" y="34" width="16" height="16" rx="4" fill="#FFFFFF"/>
+  <rect x="35.5" y="35.5" width="13" height="13" rx="3" fill="none" stroke="#FFFFFF" stroke-width="3"/>
+  <text x="78" y="43" font-family="Inter, 'Segoe UI', Arial, sans-serif" font-size="30" font-weight="700" fill="#111827" letter-spacing="-0.5">modsys<tspan fill="#2F5BEA">v4</tspan></text>
+</svg>

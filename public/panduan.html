@@ -1,0 +1,869 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Panduan Pengguna modsysv4 - Modul Cloud Acosys V4</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #2F5BEA;
+            --primary-hover: #1E46C7;
+            --primary-light: #EFF4FE;
+            --text-title: #0F172A;
+            --text-body: #334155;
+            --text-muted: #64748B;
+            --bg-page: #F8FAFC;
+            --bg-surface: #FFFFFF;
+            --border: #E2E8F0;
+            --border-focus: #94A3B8;
+            --success: #16A34A;
+            --success-light: #DCFCE7;
+            --warning: #D97706;
+            --warning-light: #FEF3C7;
+            --danger: #DC2626;
+            --danger-light: #FEE2E2;
+            --radius-sm: 6px;
+            --radius-md: 10px;
+            --radius-lg: 16px;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+            background-color: var(--bg-page);
+            color: var(--text-body);
+            line-height: 1.6;
+            padding: 0;
+            margin: 0;
+        }
+
+        /* Top Header */
+        .top-nav {
+            position: sticky;
+            top: 0;
+            background: var(--bg-surface);
+            border-bottom: 1px solid var(--border);
+            z-index: 50;
+            padding: 14px 28px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .brand-box {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            text-decoration: none;
+            color: var(--text-title);
+        }
+
+        .brand-logo {
+            width: 34px;
+            height: 34px;
+            background: var(--primary);
+            border-radius: var(--radius-sm);
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 3px;
+            padding: 7px;
+        }
+
+        .brand-logo span {
+            background: #fff;
+            border-radius: 2px;
+        }
+
+        .brand-text {
+            font-size: 18px;
+            font-weight: 800;
+            letter-spacing: -0.5px;
+        }
+
+        .header-actions {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .btn-action {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            background: var(--primary);
+            color: #fff;
+            text-decoration: none;
+            padding: 8px 16px;
+            border-radius: var(--radius-sm);
+            font-size: 13px;
+            font-weight: 600;
+            transition: all 0.2s;
+        }
+
+        .btn-action:hover {
+            background: var(--primary-hover);
+        }
+
+        /* Layout Container */
+        .guide-container {
+            max-width: 1200px;
+            margin: 32px auto;
+            padding: 0 24px;
+            display: grid;
+            grid-template-columns: 280px 1fr;
+            gap: 32px;
+            align-items: start;
+        }
+
+        /* Sidebar Navigation */
+        .guide-sidebar {
+            position: sticky;
+            top: 90px;
+            background: var(--bg-surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-md);
+            padding: 20px;
+        }
+
+        .guide-sidebar-title {
+            font-size: 12px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-muted);
+            margin-bottom: 14px;
+        }
+
+        .guide-nav-list {
+            list-style: none;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .guide-nav-list a {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 12px;
+            color: var(--text-body);
+            text-decoration: none;
+            font-size: 13px;
+            font-weight: 500;
+            border-radius: var(--radius-sm);
+            transition: all 0.15s;
+        }
+
+        .guide-nav-list a:hover {
+            background: var(--bg-page);
+            color: var(--primary);
+        }
+
+        .guide-nav-list a.active {
+            background: var(--primary-light);
+            color: var(--primary);
+            font-weight: 600;
+        }
+
+        .guide-num {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 20px;
+            height: 20px;
+            background: #E2E8F0;
+            color: var(--text-title);
+            font-size: 11px;
+            font-weight: 700;
+            border-radius: 4px;
+        }
+
+        .guide-nav-list a.active .guide-num {
+            background: var(--primary);
+            color: #fff;
+        }
+
+        /* Main Content */
+        .guide-content {
+            display: flex;
+            flex-direction: column;
+            gap: 36px;
+        }
+
+        .hero-card {
+            background: var(--bg-surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-lg);
+            padding: 36px 32px;
+        }
+
+        .hero-badge {
+            display: inline-block;
+            background: var(--primary-light);
+            color: var(--primary);
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            margin-bottom: 12px;
+        }
+
+        .hero-title {
+            font-size: 28px;
+            font-weight: 800;
+            color: var(--text-title);
+            margin-bottom: 10px;
+            letter-spacing: -0.5px;
+        }
+
+        .hero-desc {
+            font-size: 15px;
+            color: var(--text-muted);
+            max-width: 680px;
+        }
+
+        /* Guide Section Card */
+        .section-card {
+            background: var(--bg-surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-lg);
+            padding: 32px;
+            scroll-margin-top: 100px;
+        }
+
+        .section-header {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            margin-bottom: 24px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .section-icon-badge {
+            width: 44px;
+            height: 44px;
+            border-radius: var(--radius-md);
+            background: var(--primary-light);
+            color: var(--primary);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            font-weight: 800;
+        }
+
+        .section-title {
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--text-title);
+        }
+
+        .step-list {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .step-item {
+            display: grid;
+            grid-template-columns: 32px 1fr;
+            gap: 16px;
+            align-items: start;
+        }
+
+        .step-circle {
+            width: 32px;
+            height: 32px;
+            background: #E2E8F0;
+            color: var(--text-title);
+            font-size: 13px;
+            font-weight: 700;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-top: 2px;
+        }
+
+        .step-content h4 {
+            font-size: 15px;
+            font-weight: 600;
+            color: var(--text-title);
+            margin-bottom: 6px;
+        }
+
+        .step-content p {
+            font-size: 14px;
+            color: var(--text-muted);
+            line-height: 1.6;
+        }
+
+        /* Callout Box */
+        .callout {
+            border-radius: var(--radius-md);
+            padding: 16px 20px;
+            margin-top: 16px;
+            font-size: 13px;
+            display: flex;
+            gap: 12px;
+            align-items: flex-start;
+        }
+
+        .callout-info {
+            background: var(--primary-light);
+            border-left: 4px solid var(--primary);
+            color: #1E3A8A;
+        }
+
+        .callout-success {
+            background: var(--success-light);
+            border-left: 4px solid var(--success);
+            color: #065F46;
+        }
+
+        .callout-warning {
+            background: var(--warning-light);
+            border-left: 4px solid var(--warning);
+            color: #92400E;
+        }
+
+        /* Mockup Box */
+        .mockup-box {
+            background: #0F172A;
+            border-radius: var(--radius-md);
+            padding: 16px 20px;
+            margin-top: 16px;
+            color: #F8FAFC;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 12px;
+            overflow-x: auto;
+        }
+
+        .mockup-box code {
+            color: #38BDF8;
+        }
+
+        /* Table */
+        .info-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 16px;
+            font-size: 13px;
+        }
+
+        .info-table th, .info-table td {
+            padding: 12px 14px;
+            border: 1px solid var(--border);
+            text-align: left;
+        }
+
+        .info-table th {
+            background: var(--bg-page);
+            font-weight: 600;
+            color: var(--text-title);
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+
+        .badge-success { background: var(--success-light); color: var(--success); }
+        .badge-warning { background: var(--warning-light); color: var(--warning); }
+        .badge-primary { background: var(--primary-light); color: var(--primary); }
+
+        @media (max-width: 900px) {
+            .guide-container {
+                grid-template-columns: 1fr;
+            }
+            .guide-sidebar {
+                position: static;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Header Atas -->
+    <header class="top-nav">
+        <a href="index.php" class="brand-box">
+            <div class="brand-logo">
+                <span></span><span></span>
+                <span></span><span></span>
+            </div>
+            <span class="brand-text">modsysv4</span>
+        </a>
+        <div class="header-actions">
+            <a href="http://localhost/acosysv4modul/modules/pengingat-piutang" class="btn-action">
+                Buka Aplikasi SaaS &rarr;
+            </a>
+        </div>
+    </header>
+
+    <div class="guide-container">
+        
+        <!-- Sidebar Daftar Isi -->
+        <aside class="guide-sidebar">
+            <div class="guide-sidebar-title">Daftar Panduan</div>
+            <ul class="guide-nav-list">
+                <li><a href="#panduan-1" class="active"><span class="guide-num">1</span> Cara Login</a></li>
+                <li><a href="#panduan-2"><span class="guide-num">2</span> Cara Berlangganan Modul</a></li>
+                <li><a href="#panduan-3"><span class="guide-num">3</span> Tautkan WhatsApp Gateway</a></li>
+                <li><a href="#panduan-4"><span class="guide-num">4</span> Atur Database Acosys Toko</a></li>
+                <li><a href="#panduan-5"><span class="guide-num">5</span> Modul Pengingat Piutang WA</a></li>
+            </ul>
+
+            <div class="callout callout-info" style="margin-top: 24px;">
+                <div>
+                    <strong>Butuh Bantuan?</strong><br>
+                    Admin Email: <code>aroundus.livelife@gmail.com</code>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Area Konten Utama -->
+        <main class="guide-content">
+
+            <!-- Banner Utama -->
+            <div class="hero-card">
+                <span class="hero-badge">Panduan Resmi Pengguna</span>
+                <h1 class="hero-title">Panduan Lengkap Platform modsysv4</h1>
+                <p class="hero-desc">
+                    Pelajari langkah mudah menggunakan modul cloud modsysv4 yang terintegrasi langsung dengan database kasir desktop Acosys V4 toko Anda.
+                </p>
+            </div>
+
+            <!-- BAGIAN 1: CARA LOGIN -->
+            <section id="panduan-1" class="section-card">
+                <div class="section-header">
+                    <div class="section-icon-badge">1</div>
+                    <div>
+                        <h2 class="section-title">Cara Login ke modsysv4</h2>
+                        <p style="font-size: 13px; color: var(--text-muted);">Autentikasi aman sekali klik menggunakan akun Google resmi</p>
+                    </div>
+                </div>
+
+                <div class="step-list">
+                    <div class="step-item">
+                        <div class="step-circle">1</div>
+                        <div class="step-content">
+                            <h4>Buka Alamat Aplikasi</h4>
+                            <p>Buka browser Chrome di komputer Anda dan akses URL: <code>http://localhost/acosysv4modul/</code></p>
+                        </div>
+                    </div>
+
+                    <div class="step-item">
+                        <div class="step-circle">2</div>
+                        <div class="step-content">
+                            <h4>Klik Tombol "Masuk dengan Google"</h4>
+                            <p>Di halaman utama, klik tombol <strong>Masuk dengan Google</strong>. Anda akan diarahkan ke layar pemilihan akun Google resmi yang terverifikasi.</p>
+                        </div>
+                    </div>
+
+                    <div class="step-item">
+                        <div class="step-circle">3</div>
+                        <div class="step-content">
+                            <h4>Pembuatan Akun Usaha Otomatis</h4>
+                            <p>Saat pertama kali masuk, sistem akan otomatis mendaftarkan profil Anda dan membuat <strong>Akun Usaha Baru</strong>. Jika email Anda adalah <code>aroundus.livelife@gmail.com</code>, akun Anda otomatis menjadi <strong>Super Administrator</strong> yang memiliki akses penuh ke menu Panel Admin SaaS.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="callout callout-success">
+                    <div>
+                        <strong>Keuntungan Google OAuth:</strong> Anda tidak perlu repot mengingat password baru. Keamanan akun toko terlindungi oleh standar enkripsi Google Workspace.
+                    </div>
+                </div>
+            </section>
+
+            <!-- BAGIAN 2: CARA BERLANGGANAN -->
+            <section id="panduan-2" class="section-card">
+                <div class="section-header">
+                    <div class="section-icon-badge">2</div>
+                    <div>
+                        <h2 class="section-title">Cara Berlangganan & Aktivasi Modul</h2>
+                        <p style="font-size: 13px; color: var(--text-muted);">Model modular: Anda hanya membayar modul yang Anda butuhkan</p>
+                    </div>
+                </div>
+
+                <div class="step-list">
+                    <div class="step-item">
+                        <div class="step-circle">1</div>
+                        <div class="step-content">
+                            <h4>Lihat Modul di Menu Sebelah Kiri</h4>
+                            <p>Di sidebar kelompok <strong>Modul SaaS</strong>, Anda dapat melihat daftar modul yang tersedia. Modul yang belum Anda beli akan tampil abu-abu dengan <strong>icon gembok terkunci</strong> (misal: <em>Katalog Web & Self-Order</em>, <em>Dashboard Analitik Owner</em>, <em>Absensi & Komisi Sales</em>).</p>
+                        </div>
+                    </div>
+
+                    <div class="step-item">
+                        <div class="step-circle">2</div>
+                        <div class="step-content">
+                            <h4>Klik Modul Terkunci untuk Melihat Manfaat & Harga</h4>
+                            <p>Klik nama modul yang ingin Anda gunakan. Layar popup akan muncul menampilkan rangkuman fitur, nilai tambah untuk bisnis toko Anda, serta pilihan paket langganan (Bulanan, Tahunan, atau Beli Putus). Klik tombol <strong>Ajukan Berlangganan / Hubungi Pengelola</strong>.</p>
+                        </div>
+                    </div>
+
+                    <div class="step-item">
+                        <div class="step-circle">3</div>
+                        <div class="step-content">
+                            <h4>Konfirmasi & Pembayaran</h4>
+                            <p>Lakukan konfirmasi pemesanan dan pembayaran ke penyedia layanan modsysv4 sesuai instruksi paket yang Anda pilih. Tim pengelola akan memverifikasi pembayaran Anda.</p>
+                        </div>
+                    </div>
+
+                    <div class="step-item">
+                        <div class="step-circle">4</div>
+                        <div class="step-content">
+                            <h4>Modul Terbuka & Bisa Digunakan Seluruh Staf Toko Anda</h4>
+                            <p>Setelah diaktifkan, icon gembok akan hilang dan modul berubah aktif. <strong>Cukup beli 1 lisensi untuk toko Anda</strong>, seluruh kasir dan staf yang Anda undang di menu <em>Staf & Akses</em> otomatis bisa menggunakan modul tersebut tanpa biaya tambahan per orang.</p>
+                        </div>
+                    </div>
+
+                    <div class="step-item">
+                        <div class="step-circle">5</div>
+                        <div class="step-content">
+                            <h4>Memantau Masa Aktif & Perpanjangan</h4>
+                            <p>Anda dapat melihat sisa masa aktif langganan toko Anda. Sebelum masa aktif berakhir, Anda dapat mengajukan perpanjangan agar sistem otomasi (seperti pengingat tagihan otomatis) tetap berjalan lancar tanpa terhenti.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Keuntungan Model Lisensi bagi Pengguna -->
+                <div style="margin-top: 24px; padding-top: 20px; border-top: 1px dashed var(--border);">
+                    <h3 style="font-size: 15px; font-weight: 700; color: var(--text-title); margin-bottom: 12px;">
+                        Keuntungan Sistem Lisensi modsysv4 bagi Toko Anda:
+                    </h3>
+
+                    <table class="info-table">
+                        <thead>
+                            <tr>
+                                <th>Fitur Lisensi</th>
+                                <th>Keuntungan untuk Pengguna</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><strong>Bebas Tambah Pengguna (Multi-Staff)</strong></td>
+                                <td>Lisensi melekat pada akun toko, bukan per kepala. Anda bebas mengundang staf kasir, staf penagihan, atau finance sebanyak yang Anda butuhkan tanpa bayar lisensi per user.</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Bayar Hanya Modul yang Dibutuhkan</strong></td>
+                                <td>Jika toko Anda saat ini hanya butuh modul <em>Pengingat Piutang WA</em>, Anda hanya membayar modul tersebut tanpa dipaksa membeli paket modul lain yang belum diperlukan.</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Pilihan Masa Berlangganan Fleksibel</strong></td>
+                                <td>Tersedia pilihan paket Bulanan (+30 Hari), Kuartal (+90 Hari), Tahunan (+1 Tahun hemat), maupun lisensi Permanen (sekali bayar aktif selamanya).</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Perpanjangan Tanpa Kehilangan Sisa Hari</strong></td>
+                                <td>Jika Anda memperpanjang sewa saat masa aktif masih bersisa (misal sisa 7 hari), durasi paket baru akan otomatis diakumulasikan sehingga tidak ada sisa hari yang hangus.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Catatan Teknis untuk Administrator SaaS -->
+                <div class="callout callout-info" style="margin-top: 20px;">
+                    <div>
+                        <strong>Catatan Khusus Pengelola Platform (Admin):</strong><br>
+                        Sebagai Super Admin (email <code>aroundus.livelife@gmail.com</code>), Anda mengelola dan menyetujui aktivasi pelanggan melalui menu <strong>Administrator &rarr; Panel Admin SaaS &rarr; Daftar Akun</strong>, di mana Anda bisa mencentang modul dan memilih preset durasi (<em>+30H, +90H, +1Thn, Permanen</em>) serta mencatat nomor invoice pembayaran.
+                    </div>
+                </div>
+            </section>
+
+            <!-- BAGIAN 3: WHATSAPP GATEWAY -->
+            <section id="panduan-3" class="section-card">
+                <div class="section-header">
+                    <div class="section-icon-badge">3</div>
+                    <div>
+                        <h2 class="section-title">Cara Menautkan WhatsApp Gateway</h2>
+                        <p style="font-size: 13px; color: var(--text-muted);">Gunakan nomor WhatsApp toko Anda sendiri sebagai pengirim notifikasi</p>
+                    </div>
+                </div>
+
+                <div class="step-list">
+                    <div class="step-item">
+                        <div class="step-circle">1</div>
+                        <div class="step-content">
+                            <h4>Buka Menu WhatsApp Gateway</h4>
+                            <p>Di sidebar bawah kelompok <strong>Konfigurasi</strong>, klik menu <strong>WhatsApp Gateway</strong>.</p>
+                        </div>
+                    </div>
+
+                    <div class="step-item">
+                        <div class="step-circle">2</div>
+                        <div class="step-content">
+                            <h4>Daftarkan Sesi Baru</h4>
+                            <p>Isi formulir <em>Nama / Label WhatsApp</em> (misalnya: <code>WhatsApp Billing Toko</code>), lalu klik tombol <strong>Tambah (+)</strong>.</p>
+                        </div>
+                    </div>
+
+                    <div class="step-item">
+                        <div class="step-circle">3</div>
+                        <div class="step-content">
+                            <h4>Buka Modal QR & Scan dengan HP</h4>
+                            <p>Pada tabel nomor sender, klik tombol <strong>QR Code (icon QR biru)</strong>:</p>
+                            <ul style="margin-left: 20px; font-size: 13px; color: var(--text-muted); margin-top: 6px;">
+                                <li>Buka aplikasi WhatsApp di HP toko Anda.</li>
+                                <li>Ketuk menu titik tiga (Android) atau Pengaturan (iPhone) &rarr; <strong>Perangkat Tertaut (Linked Devices)</strong>.</li>
+                                <li>Pilih <strong>Tautkan Perangkat</strong>, lalu arahkan kamera ke QR Code di layar monitor.</li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <div class="step-item">
+                        <div class="step-circle">4</div>
+                        <div class="step-content">
+                            <h4>Status Otomatis Menjadi "Online & Siap"</h4>
+                            <p>Sistem akan memverifikasi kunci enkripsi. Layar akan otomatis berubah hijau dan menampilkan lencana <span class="badge badge-success">Online & Siap</span> dengan nomor telepon toko Anda (contoh: <code>+6285155435918</code>).</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="callout callout-warning">
+                    <div>
+                        <strong>Tips Koneksi Stabil:</strong> Pastikan HP WhatsApp toko Anda memiliki koneksi internet aktif. Jika status terputus sewaktu-waktu, Anda cukup menekan tombol QR untuk menautkan ulang tanpa menghapus data riwayat.
+                    </div>
+                </div>
+            </section>
+
+            <!-- BAGIAN 4: KONEKSI DATABASE ACOSYS -->
+            <section id="panduan-4" class="section-card">
+                <div class="section-header">
+                    <div class="section-icon-badge">4</div>
+                    <div>
+                        <h2 class="section-title">Cara Mengatur Koneksi Database Acosys V4 Toko</h2>
+                        <p style="font-size: 13px; color: var(--text-muted);">Hubungkan database kasir desktop toko Anda dengan aman</p>
+                    </div>
+                </div>
+
+                <div class="step-list">
+                    <div class="step-item">
+                        <div class="step-circle">1</div>
+                        <div class="step-content">
+                            <h4>Buka Menu Koneksi Acosys</h4>
+                            <p>Di sidebar kelompok <strong>Konfigurasi</strong>, klik menu <strong>Koneksi Acosys</strong>.</p>
+                        </div>
+                    </div>
+
+                    <div class="step-item">
+                        <div class="step-circle">2</div>
+                        <div class="step-content">
+                            <h4>Konektivitas Jaringan (IP Desktop Toko)</h4>
+                            <p>Agar modul cloud modsysv4 dapat membaca database MySQL di komputer kasir desktop Anda, Anda dapat menghubungkan komputer toko menggunakan:</p>
+                            <table class="info-table">
+                                <thead>
+                                    <tr>
+                                        <th>Metode Jaringan</th>
+                                        <th>Kelebihan</th>
+                                        <th>Contoh Host</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td><strong>ZeroTier / Tailscale</strong> (Disarankan)</td>
+                                        <td>Gratis, aman, tidak perlu IP Publik statis, langsung tembus NAT.</td>
+                                        <td><code>10.147.17.55</code></td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>IP Publik Statis + Port Forwarding</strong></td>
+                                        <td>Koneksi langsung tanpa install VPN pihak ketiga.</td>
+                                        <td><code>182.1.2.3</code> (Port 3306)</td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>Server Cloud Uji Coba</strong></td>
+                                        <td>Bagi pengguna coba-coba tanpa komputer kasir yang menyala.</td>
+                                        <td><code>agungds.web.id</code> (db_acosys)</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div class="step-item">
+                        <div class="step-circle">3</div>
+                        <div class="step-content">
+                            <h4>Isi Formulir & Uji Koneksi</h4>
+                            <p>Masukkan Label Toko, Host IP, Port (3306), Nama Database, User, dan Password. Klik tombol <strong>Uji Koneksi (icon petir/koneksi)</strong>. Jika muncul centang hijau, klik simpan.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="callout callout-info">
+                    <div>
+                        <strong>Keamanan Berlapis (AES-256):</strong> Seluruh password database Anda dienkripsi secara militer menggunakan algoritma AES-256-CBC. Tidak ada staf atau pihak ketiga yang dapat membaca password Anda secara teks mentah.
+                    </div>
+                </div>
+            </section>
+
+            <!-- BAGIAN 5: MODUL PENGINGAT PIUTANG WA -->
+            <section id="panduan-5" class="section-card">
+                <div class="section-header">
+                    <div class="section-icon-badge">5</div>
+                    <div>
+                        <h2 class="section-title">Cara Menggunakan Modul Pengingat Piutang WA</h2>
+                        <p style="font-size: 13px; color: var(--text-muted);">Otomasi penagihan faktur jatuh tempo langsung ke WhatsApp pelanggan & owner</p>
+                    </div>
+                </div>
+
+                <div class="step-list">
+                    <div class="step-item">
+                        <div class="step-circle">1</div>
+                        <div class="step-content">
+                            <h4>Membaca Dashboard Piutang</h4>
+                            <p>Buka menu <strong>Pengingat Piutang WA</strong> di sidebar atas. Sistem akan menampilkan:</p>
+                            <ul style="margin-left: 20px; font-size: 13px; color: var(--text-muted); margin-top: 6px;">
+                                <li><strong>Total Saldo Piutang:</strong> Akumulasi seluruh tagihan belum lunas dari database Acosys toko.</li>
+                                <li><strong>Nota Overdue:</strong> Jumlah faktur yang sudah melewati tanggal jatuh tempo (prioritas utama penagihan).</li>
+                                <li><strong>Pengirim WhatsApp:</strong> Memastikan nomor WhatsApp pengirim aktif.</li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <div class="step-item">
+                        <div class="step-circle">2</div>
+                        <div class="step-content">
+                            <h4>Melihat Rincian Faktur Per Pelanggan</h4>
+                            <p>Pada baris pelanggan yang menunggak, klik tombol <strong>Grafik / Chart (Lihat Rincian Faktur)</strong>. Modal popup akan menampilkan rincian nomor faktur, tanggal belanja, tanggal jatuh tempo, dan sisa saldo belum lunas per faktur.</p>
+                        </div>
+                    </div>
+
+                    <div class="step-item">
+                        <div class="step-circle">3</div>
+                        <div class="step-content">
+                            <h4>Ubah Nomor WhatsApp / Opt-Out Pelanggan</h4>
+                            <p>Jika nomor pelanggan di database Acosys kosong atau salah, klik tombol <strong>Telepon</strong>. Anda bisa menginput nomor WhatsApp baru tanpa mengubah database asli Acosys. Centang <em>Opt-Out</em> jika pelanggan meminta untuk tidak dikirimi notifikasi.</p>
+                        </div>
+                    </div>
+
+                    <div class="step-item">
+                        <div class="step-circle">4</div>
+                        <div class="step-content">
+                            <h4>Kirim Notifikasi Instan</h4>
+                            <p>Klik tombol <strong>Kirim (Icon Pesawat Kertas)</strong> di baris pelanggan. Sistem akan memformat pesan penagihan resmi dengan nama toko dan saldo tagihan, lalu mengirimkannya langsung melalui WhatsApp HP pelanggan.</p>
+                        </div>
+                    </div>
+
+                    <div class="step-item">
+                        <div class="step-circle">5</div>
+                        <div class="step-content">
+                            <h4>Pengaturan Otomatisasi Harian & Mode Penerima</h4>
+                            <p>Klik <strong>Icon Gerigi Pengaturan</strong> di kanan atas halaman modul:</p>
+                            <table class="info-table">
+                                <thead>
+                                    <tr>
+                                        <th>Pengaturan</th>
+                                        <th>Keterangan</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td><strong>Status Otomasi</strong></td>
+                                        <td>Centang opsi <em>"Aktifkan Pengiriman Pengingat Otomatis"</em>.</td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>Mode Penerima</strong></td>
+                                        <td>
+                                            &bull; <strong>Hanya Pelanggan:</strong> Pesan dikirim ke pelanggan yang menunggak.<br>
+                                            &bull; <strong>Hanya Nomor Tetap (Owner):</strong> Hanya mengirimkan laporan rekap daftar piutang ke WhatsApp Owner.<br>
+                                            &bull; <strong>Keduanya (Disarankan):</strong> Mengingatkan pelanggan sekaligus memberi laporan rekap ke Owner.
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>Nomor Tetap</strong></td>
+                                        <td>Nomor WhatsApp Owner/Finance toko (contoh: <code>081234567890</code>).</td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>Jam Kirim Harian</strong></td>
+                                        <td>Jadwal pengiriman setiap hari (misalnya pukul <code>09:00:00</code> pagi).</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div class="step-item">
+                        <div class="step-circle">6</div>
+                        <div class="step-content">
+                            <h4>Kustomisasi Isi Pesan WhatsApp (Template Editor)</h4>
+                            <p>Anda bebas mengubah redaksi kalimat penagihan maupun rekap owner agar sesuai karakter dan kesopanan komunikasi toko Anda. Di halaman Pengaturan yang sama, gunakan kartu <strong>Kustomisasi Isi Pesan WhatsApp (Template)</strong>:</p>
+
+                            <table class="info-table" style="margin-top: 10px;">
+                                <thead>
+                                    <tr>
+                                        <th>Jenis Pesan</th>
+                                        <th>Fungsi & Tag Variabel Dinamis</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td><strong>1. Template Pelanggan</strong><br><small style="color: var(--text-muted);">Pesan langsung ke WhatsApp penunggak</small></td>
+                                        <td>
+                                            Tag variabel yang bisa disisipkan sekali klik:<br>
+                                            <code>{nama_pelanggan}</code> : Nama debitur/pelanggan<br>
+                                            <code>{nama_toko}</code> : Nama toko Anda<br>
+                                            <code>{total_piutang}</code> : Nominal rupiah tagihan (contoh: Rp 1.450.000)<br>
+                                            <code>{jumlah_nota}</code> : Total faktur tertunggak (contoh: 2)<br>
+                                            <code>{tanggal_tempo}</code> : Tanggal jatuh tempo faktur
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>2. Template Rekap Owner</strong><br><small style="color: var(--text-muted);">Laporan ke nomor tetap owner / finance</small></td>
+                                        <td>
+                                            Tag variabel ringkasan harian:<br>
+                                            <code>{nama_toko}</code> : Nama toko Anda<br>
+                                            <code>{tanggal_sekarang}</code> : Tanggal & jam saat ini<br>
+                                            <code>{total_piutang}</code> : Total seluruh akumulasi piutang tertunggak<br>
+                                            <code>{total_pelanggan}</code> : Jumlah orang/debitur tertunggak<br>
+                                            <code>{daftar_pelanggan}</code> : Daftar rincian baris nama dan saldo debitur
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+
+                            <div style="margin-top: 14px; font-size: 13px;">
+                                <strong>Kelebihan Fitur Template:</strong>
+                                <ul style="margin-left: 20px; margin-top: 6px; color: var(--text-muted); line-height: 1.7;">
+                                    <li><strong>Chip Variabel Sekali Klik:</strong> Cukup klik tombol tag seperti <code>{nama_pelanggan}</code>, teks variabel akan otomatis masuk ke posisi kursor ketik.</li>
+                                    <li><strong>Live WhatsApp Preview:</strong> Kotak pratinjau di samping kanan mensimulasikan bentuk gelembung pesan WhatsApp asli secara interaktif saat Anda mengetik.</li>
+                                    <li><strong>Format WhatsApp:</strong> Mendukung tanda bintang (<code>*teks*</code>) untuk <strong>tebal</strong> dan underscore (<code>_teks_</code>) untuk <em>miring</em>.</li>
+                                    <li><strong>Tombol Reset Bawaan:</strong> Klik icon putar (refresh) untuk mengembalikan teks ke format default terbaik jika ingin membatalkan editan.</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="callout callout-success">
+                    <div>
+                        <strong>Aman dari Spam:</strong> Pengingat otomatis dilengkapi fitur pembatas cerdas: pelanggan tidak akan menerima pesan lebih dari 1 kali dalam sehari, dan ada jeda aman 3 detik antar pesan untuk menjaga nomor WhatsApp toko Anda dari pemblokiran.
+                    </div>
+                </div>
+
+                <div class="mockup-box">
+                    Contoh Pesan Otomatis yang Diterima Pelanggan:<br><br>
+                    <code>
+                    Halo Bapak/Ibu *Ahmad Supardi*,<br><br>
+                    Kami dari *Toko Maju Jaya* menginformasikan bahwa terdapat tagihan yang belum terselesaikan sebesar *Rp 1.450.000* (2 nota belum lunas).<br><br>
+                    Mohon untuk melakukan konfirmasi atau penyelesaian pembayaran. Abaikan pesan ini jika sudah melakukan pembayaran. Terima kasih atas kerja samanya.
+                    </code>
+                </div>
+            </section>
+
+        </main>
+    </div>
+
+</body>
+</html>
