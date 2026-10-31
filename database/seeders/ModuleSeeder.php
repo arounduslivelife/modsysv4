@@ -4,13 +4,16 @@ namespace Database\Seeders;
 
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
+use App\Models\Module;
+use App\Models\Account;
+use App\Models\AccountModule;
 
 class ModuleSeeder extends Seeder
 {
     public function run(): void
     {
         $modules = [
-            // ================= MODUL ACOSYS V4 =================
+            // ================= MODUL ACOSYS V4 (DIKEMBALIKAN UTUH) =================
             [
                 'code' => 'pengingat_piutang',
                 'name' => 'Pengingat Piutang WA',
@@ -50,56 +53,30 @@ class ModuleSeeder extends Seeder
                 'created_at' => now(),
                 'updated_at' => now(),
             ],
-
-            // ================= MODUL ACOSYS V8 =================
             [
-                'code' => 'pengingat_piutang_v8',
-                'name' => 'Pengingat Piutang WA V8',
-                'acosys_version' => 'v8',
-                'description' => 'Otomasi penagihan piutang dan invoice pelanggan via WhatsApp Gateway langsung dari database Acosys V8.',
-                'icon' => 'bell-ring',
-                'route' => 'modules.pengingat-piutang.index',
-                'price_info' => 'Rp 99.000 / bln',
-                'sort_order' => 10,
-                'is_published' => true,
-                'created_at' => now(),
-                'updated_at' => now(),
-            ],
-            [
-                'code' => 'absensi_kiosk_v8',
-                'name' => 'Absensi Wajah & Kiosk V8',
-                'acosys_version' => 'v8',
-                'description' => 'Integrasi data kehadiran karyawan, biometric face recognition, dan kiosk device dari database Acosys V8.',
+                'code' => 'absensi_karyawan',
+                'name' => 'Absensi & Komisi Sales',
+                'acosys_version' => 'v4',
+                'description' => 'Pantau kehadiran kasir dan staf toko serta hitung komisi per transaksi secara otomatis di Acosys V4.',
                 'icon' => 'users-round',
                 'route' => 'modules.absensi.index',
-                'price_info' => 'Rp 129.000 / bln',
-                'sort_order' => 11,
+                'price_info' => 'Rp 69.000 / bln',
+                'sort_order' => 4,
                 'is_published' => true,
                 'created_at' => now(),
                 'updated_at' => now(),
             ],
+
+            // ================= 1 MODUL TUNGGAL ACOSYS V8: BOT TELE =================
             [
-                'code' => 'crm_pipeline_v8',
-                'name' => 'CRM & Pipeline Sales V8',
+                'code' => 'bot_tele',
+                'name' => 'Bot Tele',
                 'acosys_version' => 'v8',
-                'description' => 'Kelola lead pelanggan, aktivitas sales, deal pipeline, dan jadwal kunjungan (visit plan) Acosys V8 secara online.',
-                'icon' => 'target',
-                'route' => 'modules.crm.index',
-                'price_info' => 'Rp 119.000 / bln',
-                'sort_order' => 12,
-                'is_published' => true,
-                'created_at' => now(),
-                'updated_at' => now(),
-            ],
-            [
-                'code' => 'pos_online_payment_v8',
-                'name' => 'Payment Gateway & PPOB V8',
-                'acosys_version' => 'v8',
-                'description' => 'Integrasi pembayaran digital, QRIS, dan top-up PPOB langsung terhubung dengan transaksi kasir Acosys V8.',
-                'icon' => 'credit-card',
-                'route' => 'modules.online-payments.index',
-                'price_info' => 'Rp 89.000 / bln',
-                'sort_order' => 13,
+                'description' => 'Bot Telegram interaktif terhubung Acosys V8: login staf/owner, cek saldo buku besar akun kas/bank, dan monitoring toko secara instan via chat Telegram.',
+                'icon' => 'send',
+                'route' => 'modules.bot-tele.index',
+                'price_info' => 'Rp 99.000 / bln',
+                'sort_order' => 10,
                 'is_published' => true,
                 'created_at' => now(),
                 'updated_at' => now(),
@@ -111,6 +88,29 @@ class ModuleSeeder extends Seeder
                 ['code' => $mod['code']],
                 $mod
             );
+        }
+
+        // Hapus modul V8 eksperimen lain jika ada
+        DB::table('modules')->where('acosys_version', 'v8')->where('code', '!=', 'bot_tele')->delete();
+
+        // Pastikan akun pertama memiliki modul aktif: pengingat_piutang (V4) dan bot_tele (V8)
+        $account = Account::first();
+        if ($account) {
+            $v4Mod = Module::where('code', 'pengingat_piutang')->first();
+            if ($v4Mod) {
+                AccountModule::updateOrCreate(
+                    ['account_id' => $account->id, 'module_id' => $v4Mod->id],
+                    ['is_active' => true, 'starts_at' => now(), 'expires_at' => now()->addYear()]
+                );
+            }
+
+            $v8Mod = Module::where('code', 'bot_tele')->first();
+            if ($v8Mod) {
+                AccountModule::updateOrCreate(
+                    ['account_id' => $account->id, 'module_id' => $v8Mod->id],
+                    ['is_active' => true, 'starts_at' => now(), 'expires_at' => now()->addYear()]
+                );
+            }
         }
     }
 }

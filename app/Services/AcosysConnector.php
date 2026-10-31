@@ -300,4 +300,141 @@ class AcosysConnector
             ];
         }, $rows);
     }
+
+    /**
+     * Authenticate a user against Acosys V8 users table.
+     */
+    public function authenticateV8User(AcosysConnection $connection, string $username, string $password): array
+    {
+        try {
+            $pdo = $this->getPdo($connection);
+            $stmt = $pdo->prepare("
+                SELECT id, name, userpassword, isactive, roles 
+                FROM users 
+                WHERE id = :id 
+                LIMIT 1
+            ");
+            $stmt->execute(['id' => $username]);
+            $user = $stmt->fetch();
+
+            if (!$user) {
+                return ['status' => false, 'message' => "Pengguna '$username' tidak ditemukan di database Acosys."];
+            }
+
+            if (empty($user['isactive'])) {
+                return ['status' => false, 'message' => "Akun kasir '$username' sedang nonaktif."];
+            }
+
+            $hash = $user['userpassword'] ?? '';
+            $isValid = false;
+
+            // 1. Cek Bcrypt standard ($2y$, $2a$)
+            if (str_starts_with($hash, '$2')) {
+                $isValid = password_verify($password, $hash);
+            } elseif ($hash === $password || md5($password) === $hash) {
+                // 2. Fallback legacy / plain
+                $isValid = true;
+            }
+
+            if (!$isValid) {
+                return ['status' => false, 'message' => 'Password yang Anda masukkan salah.'];
+            }
+
+            return [
+                'status' => true,
+                'message' => 'Autentikasi berhasil!',
+                'user' => [
+                    'id' => $user['id'],
+                    'name' => $user['name'] ?: $user['id'],
+                    'roles' => $user['roles'] ?: 'User',
+                ],
+            ];
+        } catch (\Throwable $e) {
+            return ['status' => false, 'message' => 'Kesalahan koneksi database Acosys: ' . $e->getMessage()];
+        }
+    }
+
+    /**
+     * Get payment accounts from paymenttype with their real-time balance from journaltrans.
+     * (Hanya paymentacc yang ada di tabel paymenttype Acosys V8)
+     */
+    public function getPaymentAccountsWithBalance(AcosysConnection $connection): array
+    {
+        try {
+            $pdo = $this->getPdo($connection);
+            $sql = "
+                SELECT DISTINCT
+                    pt.paymentacc as account_id,
+                    a.name as account_name,
+                    GROUP_CONCAT(DISTINCT pt.name SEPARATOR ' / ') as payment_types
+                FROM paymenttype pt
+                JOIN account a ON pt.paymentacc = a.id
+                WHERE pt.isactive = 1
+                GROUP BY pt.paymentacc, a.name
+                ORDER BY pt.paymentacc ASC
+            ";
+            $accounts = $pdo->query($sql)->fetchAll();
+
+            $results = [];
+            foreach ($accounts as $acc) {
+                $stmt = $pdo->prepare("
+                    SELECT 
+                        (COALESCE(SUM(debit), 0) - COALESCE(SUM(credit), 0)) as saldo
+                    FROM journaltrans 
+                    WHERE accountid = :account_id
+                ");
+                $stmt->execute(['account_id' => $acc['account_id']]);
+                $saldo = (float)$stmt->fetchColumn();
+
+                $results[] = [
+                    'account_id' => $acc['account_id'],
+                    'account_name' => $acc['account_name'],
+                    'payment_types' => $acc['payment_types'],
+                    'saldo' => $saldo,
+                    'formatted_saldo' => 'Rp ' . number_format($saldo, 0, ',', '.'),
+                ];
+            }
+
+            return $results;
+        } catch (\Throwable $e) {
+            return [];
+        }
+    }
+
+    /**
+     * Get single account balance info.
+     */
+    public function getSingleAccountBalance(AcosysConnection $connection, string $accountId): ?array
+    {
+        try {
+            $pdo = $this->getPdo($connection);
+            $accStmt = $pdo->prepare("SELECT id, name FROM account WHERE id = :id LIMIT 1");
+            $accStmt->execute(['id' => $accountId]);
+            $acc = $accStmt->fetch();
+
+            if (!$acc) return null;
+
+            $balStmt = $pdo->prepare("
+                SELECT 
+                    COALESCE(SUM(debit), 0) as total_debit,
+                    COALESCE(SUM(credit), 0) as total_credit,
+                    (COALESCE(SUM(debit), 0) - COALESCE(SUM(credit), 0)) as saldo
+                FROM journaltrans 
+                WHERE accountid = :account_id
+            ");
+            $balStmt->execute(['account_id' => $accountId]);
+            $bal = $balStmt->fetch();
+
+            return [
+                'account_id' => $acc['id'],
+                'account_name' => $acc['name'],
+                'total_debit' => (float)$bal['total_debit'],
+                'total_credit' => (float)$bal['total_credit'],
+                'saldo' => (float)$bal['saldo'],
+                'formatted_saldo' => 'Rp ' . number_format((float)$bal['saldo'], 0, ',', '.'),
+            ];
+        } catch (\Throwable $e) {
+            return null;
+        }
+    }
 }

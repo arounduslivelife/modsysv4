@@ -2,12 +2,20 @@
 
 use App\Http\Controllers\AdminController;
 use App\Http\Controllers\AuthController;
+use App\Http\Controllers\BotTeleController;
 use App\Http\Controllers\CronController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\ModuleRequestController;
 use App\Http\Controllers\PengingatPiutangController;
 use App\Http\Controllers\SettingsController;
 use Illuminate\Support\Facades\Route;
+
+/*
+|--------------------------------------------------------------------------
+| Public Telegram Webhook Endpoint
+|--------------------------------------------------------------------------
+*/
+Route::post('/api/telegram/webhook/{secret}', [BotTeleController::class, 'webhook'])->name('telegram.webhook');
 
 /*
 |--------------------------------------------------------------------------
@@ -80,7 +88,7 @@ Route::middleware('auth')->group(function () {
         Route::delete('/wa-devices/{id}', [SettingsController::class, 'deleteWaDevice'])->name('wa-device.delete');
     });
 
-    // Modul 1: Pengingat Piutang WA
+    // Modul 1: Pengingat Piutang WA (Acosys V4)
     Route::prefix('modules/pengingat-piutang')->name('modules.pengingat-piutang.')->group(function () {
         Route::get('/', [PengingatPiutangController::class, 'index'])->name('index');
         Route::get('/customers/{customerId}/invoices', [PengingatPiutangController::class, 'getCustomerInvoices'])->name('invoices');
@@ -88,6 +96,13 @@ Route::middleware('auth')->group(function () {
         Route::post('/send-single', [PengingatPiutangController::class, 'sendSingle'])->name('send-single');
         Route::get('/settings', [PengingatPiutangController::class, 'settings'])->name('settings');
         Route::post('/settings', [PengingatPiutangController::class, 'saveSettings'])->name('settings.save');
+    });
+
+    // Modul Acosys V8: Bot Tele
+    Route::prefix('modules/bot-tele')->name('modules.bot-tele.')->group(function () {
+        Route::get('/', [BotTeleController::class, 'index'])->name('index');
+        Route::post('/settings', [BotTeleController::class, 'saveSettings'])->name('settings.save');
+        Route::post('/test', [BotTeleController::class, 'testNotification'])->name('test');
     });
 
     // Administrator SaaS
