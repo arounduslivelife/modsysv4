@@ -28,29 +28,68 @@
             </div>
 
             <div class="sidebar-nav">
-                <div class="nav-section-title">Modul SaaS</div>
+                @php
+                    $v4Modules = $allModules->filter(fn($m) => strtolower($m->acosys_version ?? 'v4') === 'v4');
+                    $v8Modules = $allModules->filter(fn($m) => strtolower($m->acosys_version ?? 'v4') === 'v8');
+                @endphp
 
-                @foreach($allModules as $mod)
+                <!-- Modul Acosys V4 Section -->
+                <div class="nav-section-title">
+                    <span>Modul Acosys V4</span>
+                    <span class="sidebar-version-pill v4">V4</span>
+                </div>
+
+                @foreach($v4Modules as $mod)
                     @php
                         $isActive = $currentAccount && $currentAccount->hasActiveModule($mod->code);
                         $isCurrentRoute = request()->is('modules/' . str_replace('_', '-', $mod->code) . '*');
                     @endphp
 
                     @if($isActive)
-                        <a href="{{ route($mod->route ?? 'dashboard') }}" class="nav-item {{ $isCurrentRoute ? 'active' : '' }}">
+                        <a href="{{ route($mod->route ?? 'dashboard') }}" class="nav-item nav-item-v4 {{ $isCurrentRoute ? 'active' : '' }}">
                             <x-icon :name="$mod->icon" />
                             <span>{{ $mod->name }}</span>
+                            <span class="badge-version-tag v4">V4</span>
                         </a>
                     @else
-                        <button type="button" class="nav-item disabled-module" onclick="openModuleRequestModal({{ $mod->id }}, '{{ addslashes($mod->name) }}', '{{ addslashes($mod->price_info) }}', '{{ addslashes($mod->description) }}')">
+                        <button type="button" class="nav-item nav-item-v4 disabled-module" onclick="openModuleRequestModal({{ $mod->id }}, '{{ addslashes($mod->name) }}', '{{ addslashes($mod->price_info) }}', '{{ addslashes($mod->description) }}')">
                             <x-icon :name="$mod->icon" />
                             <span>{{ $mod->name }}</span>
-                            <x-icon name="lock" class="lock-badge" :size="14" />
+                            <span class="badge-version-tag v4">V4</span>
+                            <x-icon name="lock" class="lock-badge has-tag" :size="13" />
                         </button>
                     @endif
                 @endforeach
 
-                <div class="nav-section-title">Konfigurasi</div>
+                <!-- Modul Acosys V8 Section -->
+                <div class="nav-section-title" style="margin-top: 10px;">
+                    <span>Modul Acosys V8</span>
+                    <span class="sidebar-version-pill v8">V8</span>
+                </div>
+
+                @foreach($v8Modules as $mod)
+                    @php
+                        $isActive = $currentAccount && $currentAccount->hasActiveModule($mod->code);
+                        $isCurrentRoute = request()->is('modules/' . str_replace('_', '-', $mod->code) . '*');
+                    @endphp
+
+                    @if($isActive)
+                        <a href="{{ route($mod->route ?? 'dashboard') }}" class="nav-item nav-item-v8 {{ $isCurrentRoute ? 'active' : '' }}">
+                            <x-icon :name="$mod->icon" />
+                            <span>{{ $mod->name }}</span>
+                            <span class="badge-version-tag v8">V8</span>
+                        </a>
+                    @else
+                        <button type="button" class="nav-item nav-item-v8 disabled-module" onclick="openModuleRequestModal({{ $mod->id }}, '{{ addslashes($mod->name) }}', '{{ addslashes($mod->price_info) }}', '{{ addslashes($mod->description) }}')">
+                            <x-icon :name="$mod->icon" />
+                            <span>{{ $mod->name }}</span>
+                            <span class="badge-version-tag v8">V8</span>
+                            <x-icon name="lock" class="lock-badge has-tag" :size="13" />
+                        </button>
+                    @endif
+                @endforeach
+
+                <div class="nav-section-title" style="margin-top: 10px;">Konfigurasi</div>
                 <a href="{{ route('settings.connections') }}" class="nav-item {{ request()->routeIs('settings.connections*') ? 'active' : '' }}">
                     <x-icon name="database" />
                     <span>Koneksi Acosys</span>
@@ -65,7 +104,7 @@
                 </a>
 
                 @if($currentUser && $currentUser->isAdmin())
-                    <div class="nav-section-title">Administrator</div>
+                    <div class="nav-section-title" style="margin-top: 10px;">Administrator</div>
                     <a href="{{ route('admin.dashboard') }}" class="nav-item {{ request()->is('admin*') ? 'active' : '' }}">
                         <x-icon name="shield" />
                         <span>Panel Admin SaaS</span>
@@ -118,7 +157,7 @@
                             <select name="connection_id" onchange="document.getElementById('connectionSwitchForm').submit()">
                                 @foreach($connections as $conn)
                                     <option value="{{ $conn->id }}" {{ $activeConnectionId == $conn->id ? 'selected' : '' }}>
-                                        {{ $conn->label }} ({{ $conn->database }})
+                                        [{{ strtoupper($conn->acosys_version ?? 'v4') }}] {{ $conn->label }} ({{ $conn->database }})
                                     </option>
                                 @endforeach
                             </select>

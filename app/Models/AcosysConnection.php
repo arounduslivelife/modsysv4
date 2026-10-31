@@ -16,6 +16,7 @@ class AcosysConnection extends Model
     protected $fillable = [
         'account_id',
         'label',
+        'acosys_version',
         'host',
         'port',
         'database',
@@ -25,6 +26,21 @@ class AcosysConnection extends Model
         'last_test_ok',
         'test_message',
     ];
+
+    public function isV8(): bool
+    {
+        return strtolower($this->acosys_version ?? 'v4') === 'v8';
+    }
+
+    public function isV4(): bool
+    {
+        return strtolower($this->acosys_version ?? 'v4') === 'v4';
+    }
+
+    public function getVersionBadgeAttribute(): string
+    {
+        return $this->isV8() ? 'Acosys V8' : 'Acosys V4';
+    }
 
     protected function casts(): array
     {

@@ -1,8 +1,8 @@
 <x-app-layout>
     <div class="page-header">
         <div class="page-title-box">
-            <h1>Koneksi Database Acosys V4</h1>
-            <p>Atur kredensial koneksi MariaDB/MySQL desktop Acosys (IP ZeroTier, Tailscale, atau IP publik).</p>
+            <h1>Koneksi Database Acosys (V4 & V8)</h1>
+            <p>Atur kredensial koneksi MariaDB/MySQL desktop Acosys V4 maupun Acosys V8 (IP ZeroTier, Tailscale, atau IP publik).</p>
         </div>
         <div class="page-actions">
             <button type="button" class="btn-icon btn-primary" onclick="document.getElementById('addConnCard').scrollIntoView({behavior:'smooth'})" data-tooltip="Tambah Koneksi Baru">
@@ -31,6 +31,7 @@
                     <thead>
                         <tr>
                             <th>Cabang / Label</th>
+                            <th>Versi</th>
                             <th>Host Server</th>
                             <th>Port</th>
                             <th>Database</th>
@@ -46,6 +47,13 @@
                                     <strong>{{ $conn->label }}</strong>
                                     @if(session('active_connection_id') == $conn->id)
                                         <span class="badge badge-success" style="margin-left: 6px;">Aktif</span>
+                                    @endif
+                                </td>
+                                <td>
+                                    @if($conn->isV8())
+                                        <span class="badge badge-v8">Acosys V8</span>
+                                    @else
+                                        <span class="badge badge-v4">Acosys V4</span>
                                     @endif
                                 </td>
                                 <td><code>{{ $conn->host }}</code></td>
@@ -102,35 +110,46 @@
             <div class="form-grid-2">
                 <div class="form-group">
                     <label class="form-label">Nama Cabang / Label</label>
-                    <input type="text" name="label" class="form-control" placeholder="Contoh: Toko Pusat, Cabang Sudirman" required>
+                    <input type="text" name="label" class="form-control" placeholder="Contoh: Toko Pusat, Cabang Sudirman, Toko V8" required>
                     <div class="form-text">Label pembeda jika Anda memiliki lebih dari 1 cabang/server.</div>
                 </div>
 
                 <div class="form-group">
-                    <label class="form-label">Host / IP Database Acosys</label>
-                    <input type="text" name="host" class="form-control" placeholder="10.x.x.x atau 100.x.x.x (ZeroTier/Tailscale)" required>
-                    <div class="form-text">Masukkan IP komputer Acosys lokal yang telah dipasangi ZeroTier/Tailscale, atau domain publik.</div>
+                    <label class="form-label">Versi Acosys</label>
+                    <select name="acosys_version" class="form-control">
+                        <option value="v4">Acosys V4 (Desktop Legacy)</option>
+                        <option value="v8" selected>Acosys V8 (Next Gen Cloud/Desktop)</option>
+                    </select>
+                    <div class="form-text">Pilih versi Acosys yang digunakan di komputer toko Anda.</div>
                 </div>
             </div>
 
             <div class="form-grid-2">
+                <div class="form-group">
+                    <label class="form-label">Host / IP Database Acosys</label>
+                    <input type="text" name="host" class="form-control" placeholder="agungds.web.id atau IP 10.x.x.x / 100.x.x.x" required>
+                    <div class="form-text">Masukkan domain publik atau IP komputer Acosys lokal yang telah dipasangi ZeroTier/Tailscale.</div>
+                </div>
+
                 <div class="form-group">
                     <label class="form-label">Port</label>
                     <input type="number" name="port" class="form-control" value="3306" required>
                 </div>
-
-                <div class="form-group">
-                    <label class="form-label">Nama Database</label>
-                    <input type="text" name="database" class="form-control" placeholder="db_acosys" required>
-                </div>
             </div>
 
             <div class="form-grid-2">
                 <div class="form-group">
-                    <label class="form-label">Username Database</label>
-                    <input type="text" name="username" class="form-control" placeholder="db_acosys / root" required>
+                    <label class="form-label">Nama Database</label>
+                    <input type="text" name="database" class="form-control" placeholder="db_acosys / acosysv8tele" required>
                 </div>
 
+                <div class="form-group">
+                    <label class="form-label">Username Database</label>
+                    <input type="text" name="username" class="form-control" placeholder="db_acosys / acosysv8tele" required>
+                </div>
+            </div>
+
+            <div class="form-grid-2">
                 <div class="form-group">
                     <label class="form-label">Password Database</label>
                     <input type="password" name="password" class="form-control" placeholder="••••••••" required>

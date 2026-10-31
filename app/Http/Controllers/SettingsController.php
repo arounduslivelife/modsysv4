@@ -43,6 +43,7 @@ class SettingsController extends Controller
 
         $validated = $request->validate([
             'label' => 'required|string|max:100',
+            'acosys_version' => 'nullable|string|in:v4,v8',
             'host' => 'required|string|max:255',
             'port' => 'required|numeric',
             'database' => 'required|string|max:100',
@@ -62,6 +63,13 @@ class SettingsController extends Controller
         $validated['last_test_ok'] = $testResult['status'];
         $validated['last_test_at'] = now();
         $validated['test_message'] = $testResult['message'];
+
+        // Auto-detect version if detected or fallback
+        if (!empty($testResult['detected_version'])) {
+            $validated['acosys_version'] = $validated['acosys_version'] ?: $testResult['detected_version'];
+        } else {
+            $validated['acosys_version'] = $validated['acosys_version'] ?: 'v4';
+        }
 
         $conn = $account->connections()->create($validated);
 
@@ -89,11 +97,17 @@ class SettingsController extends Controller
             $conn->decrypted_password
         );
 
-        $conn->update([
+        $updateData = [
             'last_test_ok' => $test['status'],
             'last_test_at' => now(),
             'test_message' => $test['message'],
-        ]);
+        ];
+
+        if (!empty($test['detected_version'])) {
+            $updateData['acosys_version'] = $test['detected_version'];
+        }
+
+        $conn->update($updateData);
 
         if ($request->wantsJson()) {
             return response()->json($test);

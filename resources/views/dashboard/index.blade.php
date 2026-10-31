@@ -91,7 +91,14 @@
                                 <span class="badge badge-neutral">Terkunci</span>
                             @endif
                         </div>
-                        <h4 style="font-size: 15px; font-weight: 700; color: var(--text-main); margin-bottom: 6px;">{{ $mod->name }}</h4>
+                        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
+                            <h4 style="font-size: 15px; font-weight: 700; color: var(--text-main); margin: 0;">{{ $mod->name }}</h4>
+                            @if(strtolower($mod->acosys_version ?? 'v4') === 'v8')
+                                <span class="badge badge-v8">V8</span>
+                            @else
+                                <span class="badge badge-v4">V4</span>
+                            @endif
+                        </div>
                         <p style="font-size: 12px; color: var(--text-muted); line-height: 1.5; margin-bottom: 16px;">{{ $mod->description }}</p>
                     </div>
 

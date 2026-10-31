@@ -14,6 +14,7 @@ class Module extends Model
     protected $fillable = [
         'code',
         'name',
+        'acosys_version',
         'description',
         'icon',
         'route',
@@ -21,6 +22,16 @@ class Module extends Model
         'sort_order',
         'is_published',
     ];
+
+    public function isV8(): bool
+    {
+        return strtolower($this->acosys_version ?? 'v4') === 'v8';
+    }
+
+    public function isV4(): bool
+    {
+        return strtolower($this->acosys_version ?? 'v4') === 'v4';
+    }
 
     protected function casts(): array
     {

@@ -1,7 +1,14 @@
 <x-app-layout>
     <div class="page-header">
         <div class="page-title-box">
-            <h1>Pengingat Piutang WhatsApp</h1>
+            <h1>
+                Pengingat Piutang WhatsApp
+                @if($connection->isV8())
+                    <span class="badge badge-v8" style="vertical-align: middle; margin-left: 8px;">Acosys V8</span>
+                @else
+                    <span class="badge badge-v4" style="vertical-align: middle; margin-left: 8px;">Acosys V4</span>
+                @endif
+            </h1>
             <p>Daftar faktur belum lunas dan jatuh tempo langsung dari database {{ $connection->label }} ({{ $company['name'] }}).</p>
         </div>
         <div class="page-actions">

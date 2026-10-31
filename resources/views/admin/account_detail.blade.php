@@ -73,6 +73,11 @@
                                 <td>
                                     <label for="chk_{{ $mod->id }}" style="cursor: pointer;">
                                         <strong>{{ $mod->name }}</strong>
+                                        @if(strtolower($mod->acosys_version ?? 'v4') === 'v8')
+                                            <span class="badge badge-v8" style="margin-left: 6px;">V8</span>
+                                        @else
+                                            <span class="badge badge-v4" style="margin-left: 6px;">V4</span>
+                                        @endif
                                         <div style="font-size: 11px; color: var(--text-muted);">{{ $mod->description }}</div>
                                     </label>
                                 </td>

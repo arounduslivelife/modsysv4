@@ -41,10 +41,25 @@ class AcosysConnector
             $customerCount = (int) $pdo->query("SELECT COUNT(*) FROM customer")->fetchColumn();
             $companyName = (string) ($pdo->query("SELECT name FROM company LIMIT 1")->fetchColumn() ?: 'Acosys');
 
+            // Detect Acosys version (V8 vs V4)
+            $detectedVersion = 'v4';
+            $acosysVersionLabel = 'Acosys V4';
+            if (in_array('version', $tables)) {
+                try {
+                    $v8Ver = $pdo->query("SELECT version FROM version LIMIT 1")->fetchColumn();
+                    if ($v8Ver) {
+                        $detectedVersion = 'v8';
+                        $acosysVersionLabel = "Acosys V{$v8Ver}";
+                    }
+                } catch (\Throwable $e) {}
+            }
+
             return [
                 'status' => true,
-                'message' => "Koneksi berhasil! Terhubung ke {$companyName} ({$customerCount} pelanggan, MariaDB/MySQL {$version}).",
+                'message' => "Koneksi berhasil! Terhubung ke {$companyName} ({$customerCount} pelanggan, {$acosysVersionLabel}, DBMS {$version}).",
                 'version' => $version,
+                'detected_version' => $detectedVersion,
+                'acosys_version_label' => $acosysVersionLabel,
                 'company_name' => $companyName,
                 'customer_count' => $customerCount,
             ];
