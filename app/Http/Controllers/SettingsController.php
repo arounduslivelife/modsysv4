@@ -373,7 +373,7 @@ class SettingsController extends Controller
             return back()->with('error', 'Masukkan Chat ID Telegram tujuan.');
         }
 
-        $message = "🤖 *Tes Pesan Konfigurasi dari modsysv4 (Acosys V8)*\n\nKoneksi Bot Telegram Anda berhasil berfungsi dengan baik! Siap melayani modul-modul Acosys V8.";
+        $message = "*Tes Pesan Konfigurasi dari modsysv4 (Acosys V8)*\n\nKoneksi Bot Telegram Anda berhasil berfungsi dengan baik! Siap melayani modul-modul Acosys V8.";
         $res = $setting->sendMessage($message, $chatId);
 
         if ($res['status']) {

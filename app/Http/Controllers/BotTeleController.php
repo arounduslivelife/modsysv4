@@ -175,7 +175,7 @@ class BotTeleController extends Controller
             return back()->with('error', 'Masukkan Chat ID Telegram tujuan.');
         }
 
-        $message = "🤖 *Tes Pesan dari modsysv4 (Acosys V8)*\n\nKoneksi Bot Telegram Anda berhasil berfungsi dengan baik! Siap digunakan untuk pengecekan saldo buku besar.";
+        $message = "*Tes Pesan dari modsysv4 (Acosys V8)*\n\nKoneksi Bot Telegram Anda berhasil berfungsi dengan baik! Siap digunakan untuk pengecekan saldo buku besar.";
         $res = $setting->sendMessage($message, $chatId);
 
         if ($res['status']) {
@@ -234,26 +234,26 @@ class BotTeleController extends Controller
             // A. Perintah /start
             if ($text === '/start') {
                 if ($session) {
-                    $reply = "👋 Halo, *{$session->acosys_user_name}*!\n\n"
+                    $reply = "Halo, *{$session->acosys_user_name}*!\n\n"
                         . "Akun Telegram Anda terhubung ke database kasir *{$connection->label}*.\n\n"
                         . "Silakan gunakan tombol menu di bawah untuk mengakses fitur kasir:";
                     $this->sendReplyMenu($token, $chatId, $reply, $setting->account);
                 } else {
-                    $reply = "👋 *Selamat datang di Bot Acosys V8!*\n\n"
+                    $reply = "*Selamat datang di Bot Acosys V8*\n\n"
                         . "Untuk mengakses informasi saldo kasir dan buku besar, silakan login dengan akun kasir/staf Acosys Anda.\n\n"
-                        . "👉 *Format Login:*\n`username password`\n\n"
+                        . "*Format Login:*\n`username password`\n\n"
                         . "_Contoh:_\n`admin 123456`\n\n"
-                        . "🔒 _Pesan kredensial Anda akan otomatis dihapus oleh bot demi keamanan._";
+                        . "_Pesan kredensial Anda akan otomatis dihapus oleh bot demi keamanan._";
                     $this->sendTelegramMessage($token, $chatId, $reply);
                 }
                 return response()->json(['ok' => true]);
             }
 
-            // B. Perintah /logout atau Tombol "🔒 Logout"
+            // B. Perintah /logout atau Tombol "Logout"
             if ($text === '/logout' || str_contains($text, 'Logout')) {
                 if ($session) {
                     $session->delete();
-                    $reply = "🔒 *Logout Berhasil!*\nSesi Anda telah diakhiri. Ketik `/start` kapan saja untuk login kembali.";
+                    $reply = "*Logout Berhasil!*\nSesi Anda telah diakhiri. Ketik `/start` kapan saja untuk login kembali.";
                     $this->sendTelegramMessage($token, $chatId, $reply, ['remove_keyboard' => true]);
                 } else {
                     $this->sendTelegramMessage($token, $chatId, "Anda belum login. Ketik `/start` untuk login.");
@@ -261,10 +261,10 @@ class BotTeleController extends Controller
                 return response()->json(['ok' => true]);
             }
 
-            // C. Tombol "💰 Cek Saldo Buku Besar" atau command /saldo
+            // C. Tombol "Cek Saldo Buku Besar" atau command /saldo
             if (str_contains($text, 'Saldo Buku Besar') || $text === '/saldo' || str_starts_with($text, '/saldo')) {
                 if (!$session) {
-                    $reply = "⚠️ *Akses Ditolak!*\nAnda harus login terlebih dahulu.\n\nKetik format:\n`username password`";
+                    $reply = "*Akses Ditolak!*\nAnda harus login terlebih dahulu.\n\nKetik format:\n`username password`";
                     $this->sendTelegramMessage($token, $chatId, $reply);
                     return response()->json(['ok' => true]);
                 }
@@ -272,7 +272,7 @@ class BotTeleController extends Controller
                 // Validasi Lisensi Modul v8_buku_besar pada akun toko
                 $account = $setting->account;
                 if (!$account || !$account->hasActiveModule('v8_buku_besar')) {
-                    $reply = "⚠️ *Modul Belum Aktif!*\n\n"
+                    $reply = "*Modul Belum Aktif!*\n\n"
                         . "Fitur *Cek Saldo Buku Besar* belum diaktifkan atau masa langganan toko telah berakhir.\n\n"
                         . "Silakan hubungi pemilik toko untuk mengaktifkan modul ini di panel web modsysv4.";
                     $this->sendTelegramMessage($token, $chatId, $reply);
@@ -283,7 +283,7 @@ class BotTeleController extends Controller
                 $paymentAccounts = $this->connector->getPaymentAccountsWithBalance($connection);
 
                 if (empty($paymentAccounts)) {
-                    $reply = "⚠️ Tidak ditemukan akun pembayaran aktif di tabel `paymenttype` database Acosys V8.";
+                    $reply = "Peringatan: Tidak ditemukan akun pembayaran aktif di tabel `paymenttype` database Acosys V8.";
                     $this->sendTelegramMessage($token, $chatId, $reply);
                     return response()->json(['ok' => true]);
                 }
@@ -293,13 +293,13 @@ class BotTeleController extends Controller
                 foreach ($paymentAccounts as $acc) {
                     $inlineKeyboard[] = [
                         [
-                            'text' => "💳 {$acc['account_name']} ({$acc['payment_types']})",
+                            'text' => "[{$acc['account_id']}] {$acc['account_name']} ({$acc['payment_types']})",
                             'callback_data' => "saldo:{$acc['account_id']}",
                         ]
                     ];
                 }
 
-                $reply = "🏛 *PILIH AKUN BUKU BESAR*\n\n"
+                $reply = "*PILIH AKUN BUKU BESAR*\n\n"
                     . "Berikut adalah daftar akun pembayaran kasir (Kas & Bank) dari database *{$connection->label}*.\n"
                     . "Klik akun di bawah untuk melihat saldo realtime:";
 
@@ -339,14 +339,14 @@ class BotTeleController extends Controller
                         ]
                     );
 
-                    $reply = "✅ *Login Berhasil!*\n\n"
+                    $reply = "*Login Berhasil!*\n\n"
                         . "Selamat datang, *{$user['name']}* ({$user['roles']})!\n"
                         . "Terhubung ke database: *{$connection->label}*\n\n"
                         . "Silakan klik menu di bawah untuk mulai menggunakan bot:";
 
                     $this->sendReplyMenu($token, $chatId, $reply, $setting->account);
                 } else {
-                    $reply = "❌ *Login Gagal!*\n\n"
+                    $reply = "*Login Gagal!*\n\n"
                         . "{$authResult['message']}\n\n"
                         . "Silakan coba lagi dengan format:\n`username password`";
                     $this->sendTelegramMessage($token, $chatId, $reply);
@@ -383,14 +383,14 @@ class BotTeleController extends Controller
                     ->first();
 
                 if (!$session) {
-                    $this->sendTelegramMessage($token, $chatId, "⚠️ Sesi Anda telah berakhir. Silakan login kembali dengan `/start`.");
+                    $this->sendTelegramMessage($token, $chatId, "Peringatan: Sesi Anda telah berakhir. Silakan login kembali dengan `/start`.");
                     return response()->json(['ok' => true]);
                 }
 
                 // Validasi Lisensi Modul v8_buku_besar
                 $account = $setting->account;
                 if (!$account || !$account->hasActiveModule('v8_buku_besar')) {
-                    $this->sendTelegramMessage($token, $chatId, "⚠️ Lisensi modul Cek Buku Besar toko Anda belum aktif.");
+                    $this->sendTelegramMessage($token, $chatId, "Peringatan: Lisensi modul Cek Buku Besar toko Anda belum aktif.");
                     return response()->json(['ok' => true]);
                 }
 
@@ -398,21 +398,21 @@ class BotTeleController extends Controller
                 $balInfo = $this->connector->getSingleAccountBalance($connection, $accountId);
 
                 if ($balInfo) {
-                    $receipt = "🏛 *INFORMASI SALDO BUKU BESAR*\n"
+                    $receipt = "*INFORMASI SALDO BUKU BESAR*\n"
                         . "━━━━━━━━━━━━━━━━━━━━\n"
-                        . "🏷 *Akun:* `{$balInfo['account_id']}` — *{$balInfo['account_name']}*\n"
+                        . "Akun: `{$balInfo['account_id']}` — *{$balInfo['account_name']}*\n"
                         . "━━━━━━━━━━━━━━━━━━━━\n"
-                        . "📥 Total Debit  : Rp " . number_format($balInfo['total_debit'], 0, ',', '.') . "\n"
-                        . "📤 Total Kredit : Rp " . number_format($balInfo['total_credit'], 0, ',', '.') . "\n"
+                        . "Total Debit  : Rp " . number_format($balInfo['total_debit'], 0, ',', '.') . "\n"
+                        . "Total Kredit : Rp " . number_format($balInfo['total_credit'], 0, ',', '.') . "\n"
                         . "━━━━━━━━━━━━━━━━━━━━\n"
-                        . "💰 *Saldo Terakhir: {$balInfo['formatted_saldo']}*\n"
+                        . "*Saldo Terakhir: {$balInfo['formatted_saldo']}*\n"
                         . "━━━━━━━━━━━━━━━━━━━━\n"
-                        . "📅 Waktu: " . now()->format('d/m/Y H:i') . " WIB\n"
-                        . "👤 Pengguna: {$session->acosys_user_name} ({$session->acosys_user_role})";
+                        . "Waktu: " . now()->format('d/m/Y H:i') . " WIB\n"
+                        . "Pengguna: {$session->acosys_user_name} ({$session->acosys_user_role})";
 
                     $this->sendTelegramMessage($token, $chatId, $receipt);
                 } else {
-                    $this->sendTelegramMessage($token, $chatId, "⚠️ Gagal memuat saldo akun `{$accountId}`.");
+                    $this->sendTelegramMessage($token, $chatId, "Gagal memuat saldo akun `{$accountId}`.");
                 }
             }
         }
@@ -430,13 +430,13 @@ class BotTeleController extends Controller
         // Modul 1: Cek Buku Besar (v8_buku_besar)
         if ($account && $account->hasActiveModule('v8_buku_besar')) {
             $keyboardRows[] = [
-                ['text' => '💰 Cek Saldo Buku Besar'],
+                ['text' => 'Cek Saldo Buku Besar'],
             ];
         }
 
         // Tombol Logout selalu ada di bagian bawah
         $keyboardRows[] = [
-            ['text' => '🔒 Logout'],
+            ['text' => 'Logout'],
         ];
 
         $keyboard = [

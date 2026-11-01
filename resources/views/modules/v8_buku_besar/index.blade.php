@@ -87,10 +87,10 @@
     <div style="background: #F8FAFC; border: 1px solid var(--border-subtle); border-left: 4px solid #6D28D9; padding: 16px 20px; border-radius: var(--radius-md); margin-bottom: 24px; display: flex; justify-content: space-between; align-items: center; gap: 16px;">
         <div>
             <div style="font-size: 14px; font-weight: 700; color: var(--text-main); margin-bottom: 4px;">
-                Integrasi Bot Telegram: Tombol [ 💰 Cek Saldo Buku Besar ] Aktif
+                Integrasi Bot Telegram: Tombol [ Cek Saldo Buku Besar ] Aktif
             </div>
             <div style="font-size: 12px; color: var(--text-muted); line-height: 1.5;">
-                Dengan lisensi modul ini aktif pada akun toko Anda, staf dan kasir yang login via Telegram dapat menekan tombol menu <code>💰 Cek Saldo Buku Besar</code> untuk memeriksa saldo akun kas dan bank secara instan.
+                Dengan lisensi modul ini aktif pada akun toko Anda, staf dan kasir yang login via Telegram dapat menekan tombol menu <code>Cek Saldo Buku Besar</code> untuk memeriksa saldo akun kas dan bank secara instan.
             </div>
         </div>
         @if($setting?->bot_username)

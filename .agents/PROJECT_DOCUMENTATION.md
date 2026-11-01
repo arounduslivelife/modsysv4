@@ -56,7 +56,11 @@ Dokumen ini berisi rangkuman arsitektur, panduan teknis, dan catatan penting pen
    - Semua tombol aksi (tabel, header, modal) **HANYA BERISI ICON SVG TANPA TEKS**.
    - Setiap tombol **WAJIB** memiliki atribut `data-tooltip="..."` untuk informasi pengguna.
    - Posisi tombol konsisten: Aksi halaman di kanan atas, aksi tabel di kolom kanan.
-3. **Palet Warna Utama:**
+3. **DILARANG MENGGUNAKAN EMOTICON / EMOJI:**
+   - Seluruh antarmuka web (UI Blade, header, tabel, card, badge, teks bantuan, placeholder, toast/alert) **TIDAK BOLEH MENGGUNAKAN EMOTICON ATAU EMOJI APAPUN** (seperti 🤖, 👋, 💰, 🔒, 🏛, 📊, 💳, 📦, ✅, ❌, dll).
+   - Tampilan visual murni menggunakan **Icon SVG** (komponen `<x-icon name="..." />`) atau teks bersih profesional.
+   - Pesan sistem dan pesan interaksi bot Telegram juga tidak boleh menggunakan emoticon/emoji; gunakan format teks bersih, tebal (`*teks*`), atau miring (`_teks_`).
+4. **Palet Warna Utama:**
    - Primary: `#2F5BEA`
    - Dark Slate Text: `#0F172A`, `#1E293B`, `#64748B`
    - Success: `#16A34A` (Background: `#DCFCE7`)
