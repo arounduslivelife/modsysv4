@@ -712,6 +712,7 @@ class BotTeleController extends Controller
 
                 $sData = $session->session_data;
                 $sData['user_create'] = $session->acosys_user_name ?: 'TELEGRAM';
+                $sData['user_id'] = $session->acosys_user_name ?: 'admin';
 
                 $result = $this->connector->createJournalTransaction($connection, $sData);
 
@@ -720,14 +721,18 @@ class BotTeleController extends Controller
                     $session->session_data = null;
                     $session->save();
 
+                    $txDate = $result['date'] ?? now()->format('d/m/Y');
+                    $txTime = $result['time'] ?? now()->format('H:i');
+                    $divName = $result['division'] ?? ($result['division_name'] ?? 'STORE');
+
                     $receipt = "*TRANSAKSI JURNAL TERSIMPAN*\n"
                         . "━━━━━━━━━━━━━━━━━━━━\n"
                         . "No. Bukti  : `{$result['jtid']}`\n"
-                        . "Tanggal    : {$result['date']} {$result['time']} WIB\n"
-                        . "Divisi     : {$result['division']}\n"
+                        . "Tanggal    : {$txDate} {$txTime} WIB\n"
+                        . "Divisi     : {$divName}\n"
                         . "Operator   : {$session->acosys_user_name}\n"
                         . "━━━━━━━━━━━━━━━━━━━━\n"
-                        . "Keterangan :\n_{$sData['memo']}_\n"
+                        . "Keterangan :\n{$sData['memo']}\n"
                         . "━━━━━━━━━━━━━━━━━━━━\n"
                         . "(D) [{$sData['debit_account_id']}] {$sData['debit_account_name']}\n"
                         . "    Rp " . number_format($sData['debit_amount'], 0, ',', '.') . "\n"
@@ -811,21 +816,32 @@ class BotTeleController extends Controller
      */
     protected function sendJournalConfirmation(string $token, string $chatId, $connection, array $sData, $session)
     {
-        $nextId = $this->connector->getNextJournalId($connection, $sData['division_id'] ?? '11');
+        $idInfo = $this->connector->getNextJournalId($connection, $sData['division_id'] ?? '11');
+        $nextId = is_array($idInfo) ? ($idInfo['jtid'] ?? ('JT-' . time())) : (string)$idInfo;
+
+        $divisionName = $sData['division_name'] ?? ($idInfo['division_name'] ?? 'STORE');
+        $memo = $sData['memo'] ?? '-';
+        $debitAccId = $sData['debit_account_id'] ?? '';
+        $debitAccName = $sData['debit_account_name'] ?? '';
+        $debitAmount = (float)($sData['debit_amount'] ?? 0);
+        $creditAccId = $sData['credit_account_id'] ?? '';
+        $creditAccName = $sData['credit_account_name'] ?? '';
+        $creditAmount = (float)($sData['credit_amount'] ?? 0);
+        $operator = $session->acosys_user_name ?? 'admin';
 
         $receipt = "*KONFIRMASI JURNAL TRANSAKSI*\n"
             . "━━━━━━━━━━━━━━━━━━━━\n"
             . "Estimasi No. : `{$nextId}`\n"
-            . "Divisi       : {$sData['division_name']}\n"
+            . "Divisi       : {$divisionName}\n"
             . "Tanggal      : " . now()->format('d/m/Y H:i') . " WIB\n"
-            . "Operator     : {$session->acosys_user_name}\n"
+            . "Operator     : {$operator}\n"
             . "━━━━━━━━━━━━━━━━━━━━\n"
-            . "Keterangan   :\n_{$sData['memo']}_\n"
+            . "Keterangan   :\n{$memo}\n"
             . "━━━━━━━━━━━━━━━━━━━━\n"
-            . "(DEBIT)  : [{$sData['debit_account_id']}] {$sData['debit_account_name']}\n"
-            . "           Rp " . number_format($sData['debit_amount'], 0, ',', '.') . "\n"
-            . "(KREDIT) : [{$sData['credit_account_id']}] {$sData['credit_account_name']}\n"
-            . "           Rp " . number_format($sData['credit_amount'], 0, ',', '.') . "\n"
+            . "(DEBIT)  : [{$debitAccId}] {$debitAccName}\n"
+            . "           Rp " . number_format($debitAmount, 0, ',', '.') . "\n"
+            . "(KREDIT) : [{$creditAccId}] {$creditAccName}\n"
+            . "           Rp " . number_format($creditAmount, 0, ',', '.') . "\n"
             . "━━━━━━━━━━━━━━━━━━━━\n"
             . "Pastikan data di atas sudah sesuai sebelum menyimpan ke database Acosys V8.";
 

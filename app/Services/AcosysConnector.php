@@ -585,7 +585,7 @@ class AcosysConnector
             $creditAccountId = (string)($data['credit_account_id'] ?? '');
             $creditAccountName = (string)($data['credit_account_name'] ?? '');
             $creditAmount = (float)($data['credit_amount'] ?? 0);
-            $userId = (string)($data['user_id'] ?? 'admin');
+            $userId = (string)($data['user_id'] ?? $data['user_create'] ?? 'admin');
 
             // 1. Kunci dan ambil nomor urut division
             $stmtDiv = $pdo->prepare("SELECT id, description, frmjournalentryid, journalentryidno FROM division WHERE id = :id FOR UPDATE");
@@ -616,10 +616,12 @@ class AcosysConnector
             $insH = $pdo->prepare("
                 INSERT INTO journal (
                     jtid, jtdate, jttime, memo, memoedit, division, projectid, journalvalue,
-                    printed, approved, approvalstatus, approvallevel, usercreate, updatetimestamp
+                    printed, approved, approvalstatus, approvallevel, approvalnote, approvaluser,
+                    usercreate, useredit, updatetimestamp
                 ) VALUES (
-                    :jtid, :jtdate, :jttime, :memo, '', :division, '', :journalvalue,
-                    0, 1, 0, 0, :usercreate, :updatetimestamp
+                    :jtid, :jtdate, :jttime, :memo, '', :division, NULL, :journalvalue,
+                    0, 1, 1, 0, '', '',
+                    :usercreate, '', :updatetimestamp
                 )
             ");
             $insH->execute([
@@ -637,10 +639,10 @@ class AcosysConnector
             $insD = $pdo->prepare("
                 INSERT INTO journaltrans (
                     jtid, jtdate, memo, accountid, accountname, debit, credit,
-                    division, projectid, approved, usercreate, updatetimestamp
+                    division, projectid, reftransaction, approved, usercreate, useredit, updatetimestamp
                 ) VALUES (
                     :jtid, :jtdate, :memo, :accountid, :accountname, :debit, 0,
-                    :division, '', 1, :usercreate, :updatetimestamp
+                    :division, NULL, '', 1, :usercreate, '', :updatetimestamp
                 )
             ");
             $insD->execute([
@@ -659,10 +661,10 @@ class AcosysConnector
             $insC = $pdo->prepare("
                 INSERT INTO journaltrans (
                     jtid, jtdate, memo, accountid, accountname, debit, credit,
-                    division, projectid, approved, usercreate, updatetimestamp
+                    division, projectid, reftransaction, approved, usercreate, useredit, updatetimestamp
                 ) VALUES (
                     :jtid, :jtdate, :memo, :accountid, :accountname, 0, :credit,
-                    :division, '', 1, :usercreate, :updatetimestamp
+                    :division, NULL, '', 1, :usercreate, '', :updatetimestamp
                 )
             ");
             $insC->execute([
@@ -689,8 +691,11 @@ class AcosysConnector
                 'jtid' => $jtid,
                 'jtdate' => $jtDate,
                 'jttime' => $jtTime,
+                'date' => date('d/m/Y', strtotime($jtDate)),
+                'time' => date('H:i', strtotime($jtTime)),
                 'memo' => $memo,
                 'journalvalue' => $journalValue,
+                'division' => $div['description'] ?? $divisionId,
                 'division_id' => $divisionId,
                 'division_name' => $div['description'] ?? '',
                 'usercreate' => $userId,
