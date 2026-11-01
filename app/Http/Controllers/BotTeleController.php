@@ -261,6 +261,120 @@ class BotTeleController extends Controller
                 return response()->json(['ok' => true]);
             }
 
+            // B1. Pembatalan Transaksi Jurnal (Ketik 'batal' atau '/batal')
+            if (strtolower($text) === 'batal' || $text === '/batal') {
+                if ($session && $session->state !== 'idle') {
+                    $session->state = 'idle';
+                    $session->session_data = null;
+                    $session->save();
+                    $this->sendTelegramMessage($token, $chatId, "Input jurnal transaksi telah dibatalkan.");
+                    $this->sendReplyMenu($token, $chatId, "Silakan pilih menu di bawah:", $setting->account);
+                    return response()->json(['ok' => true]);
+                }
+            }
+
+            // B2. Alur Multi-Langkah Input Jurnal Tele (Conversational State Machine)
+            if ($session && str_starts_with($session->state, 'jurnal_step_')) {
+                $sData = $session->session_data ?: [];
+
+                // Step 1: Input Memo / Keterangan
+                if ($session->state === 'jurnal_step_memo') {
+                    $sData['memo'] = $text;
+                    $session->session_data = $sData;
+                    $session->state = 'jurnal_step_debit_acc';
+                    $session->save();
+
+                    $this->sendDebitAccountPicker($token, $chatId, $connection, $text);
+                    return response()->json(['ok' => true]);
+                }
+
+                // Step 2: Pencarian Akun Debit via Teks
+                if ($session->state === 'jurnal_step_debit_acc') {
+                    $matches = $this->connector->searchPostableAccounts($connection, $text, 8);
+                    if (empty($matches)) {
+                        $reply = "Akun dengan kata kunci '{$text}' tidak ditemukan.\nSilakan ketik kode atau nama akun lain:";
+                        $this->sendTelegramMessage($token, $chatId, $reply, [
+                            'inline_keyboard' => [[['text' => 'Batalkan', 'callback_data' => 'jurnal_act:cancel']]]
+                        ]);
+                    } else {
+                        $inline = [];
+                        foreach ($matches as $m) {
+                            $inline[] = [['text' => "[{$m['id']}] {$m['name']}", 'callback_data' => "jacc_d:{$m['id']}"]];
+                        }
+                        $inline[] = [['text' => 'Batalkan', 'callback_data' => 'jurnal_act:cancel']];
+                        $reply = "*Pilih Akun Debit:*\nHasil pencarian untuk '{$text}':";
+                        $this->sendTelegramMessage($token, $chatId, $reply, ['inline_keyboard' => $inline]);
+                    }
+                    return response()->json(['ok' => true]);
+                }
+
+                // Step 3: Input Nominal Debit
+                if ($session->state === 'jurnal_step_debit_amount') {
+                    $cleanAmount = (float)preg_replace('/[^0-9]/', '', $text);
+                    if ($cleanAmount <= 0) {
+                        $this->sendTelegramMessage($token, $chatId, "Nominal harus berupa angka lebih dari 0. Silakan ketik nominal yang valid:\n_Contoh: 50000_");
+                        return response()->json(['ok' => true]);
+                    }
+
+                    $sData['debit_amount'] = $cleanAmount;
+                    $session->session_data = $sData;
+                    $session->state = 'jurnal_step_credit_acc';
+                    $session->save();
+
+                    $this->sendCreditAccountPicker($token, $chatId, $connection, $cleanAmount);
+                    return response()->json(['ok' => true]);
+                }
+
+                // Step 4: Pencarian Akun Kredit via Teks
+                if ($session->state === 'jurnal_step_credit_acc') {
+                    $matches = $this->connector->searchPostableAccounts($connection, $text, 8);
+                    if (empty($matches)) {
+                        $reply = "Akun dengan kata kunci '{$text}' tidak ditemukan.\nSilakan ketik kode atau nama akun lain:";
+                        $this->sendTelegramMessage($token, $chatId, $reply, [
+                            'inline_keyboard' => [[['text' => 'Batalkan', 'callback_data' => 'jurnal_act:cancel']]]
+                        ]);
+                    } else {
+                        $inline = [];
+                        foreach ($matches as $m) {
+                            $inline[] = [['text' => "[{$m['id']}] {$m['name']}", 'callback_data' => "jacc_c:{$m['id']}"]];
+                        }
+                        $inline[] = [['text' => 'Batalkan', 'callback_data' => 'jurnal_act:cancel']];
+                        $reply = "*Pilih Akun Kredit:*\nHasil pencarian untuk '{$text}':";
+                        $this->sendTelegramMessage($token, $chatId, $reply, ['inline_keyboard' => $inline]);
+                    }
+                    return response()->json(['ok' => true]);
+                }
+
+                // Step 5: Input Nominal Kredit
+                if ($session->state === 'jurnal_step_credit_amount') {
+                    $cleanAmount = (float)preg_replace('/[^0-9]/', '', $text);
+                    if ($cleanAmount <= 0) {
+                        $this->sendTelegramMessage($token, $chatId, "Nominal harus berupa angka lebih dari 0. Silakan ketik nominal yang valid:\n_Contoh: 50000_");
+                        return response()->json(['ok' => true]);
+                    }
+
+                    $debitAmount = (float)($sData['debit_amount'] ?? 0);
+                    if ($cleanAmount !== $debitAmount) {
+                        $msg = "Peringatan: Jurnal tidak seimbang (Debit: Rp " . number_format($debitAmount, 0, ',', '.') . " vs Kredit: Rp " . number_format($cleanAmount, 0, ',', '.') . ").\n"
+                            . "Total Debit dan Kredit harus bernilai sama. Silakan masukkan nominal yang seimbang:";
+                        $inline = [
+                            [['text' => "Samakan dengan Debit: Rp " . number_format($debitAmount, 0, ',', '.'), 'callback_data' => 'jcredit_same']],
+                            [['text' => 'Batalkan', 'callback_data' => 'jurnal_act:cancel']]
+                        ];
+                        $this->sendTelegramMessage($token, $chatId, $msg, ['inline_keyboard' => $inline]);
+                        return response()->json(['ok' => true]);
+                    }
+
+                    $sData['credit_amount'] = $cleanAmount;
+                    $session->session_data = $sData;
+                    $session->state = 'jurnal_step_confirm';
+                    $session->save();
+
+                    $this->sendJournalConfirmation($token, $chatId, $connection, $sData, $session);
+                    return response()->json(['ok' => true]);
+                }
+            }
+
             // C. Tombol "Cek Saldo Buku Besar" atau command /saldo
             if (str_contains($text, 'Saldo Buku Besar') || $text === '/saldo' || str_starts_with($text, '/saldo')) {
                 if (!$session) {
@@ -309,7 +423,49 @@ class BotTeleController extends Controller
                 return response()->json(['ok' => true]);
             }
 
-            // D. Proses Login (Input Teks "username password" atau "/login username password")
+            // D. Tombol "Jurnal Tele" atau command /jurnal
+            if (str_contains($text, 'Jurnal Tele') || $text === '/jurnal' || str_starts_with($text, '/jurnal')) {
+                if (!$session) {
+                    $reply = "*Akses Ditolak!*\nAnda harus login terlebih dahulu.\n\nKetik format:\n`username password`";
+                    $this->sendTelegramMessage($token, $chatId, $reply);
+                    return response()->json(['ok' => true]);
+                }
+
+                // Validasi Lisensi Modul v8_jurnal_tele pada akun toko
+                $account = $setting->account;
+                if (!$account || !$account->hasActiveModule('v8_jurnal_tele')) {
+                    $reply = "*Modul Belum Aktif!*\n\n"
+                        . "Fitur *Jurnal Tele* belum diaktifkan atau masa langganan toko telah berakhir.\n\n"
+                        . "Silakan hubungi pemilik toko untuk mengaktifkan modul ini di panel web modsysv4.";
+                    $this->sendTelegramMessage($token, $chatId, $reply);
+                    return response()->json(['ok' => true]);
+                }
+
+                // Ambil divisi toko default
+                $defaultDiv = $this->connector->getDefaultDivision($connection);
+                $divisionId = $defaultDiv['id'] ?? '11';
+
+                $session->state = 'jurnal_step_memo';
+                $session->session_data = [
+                    'division_id' => $divisionId,
+                    'division_name' => $defaultDiv['description'] ?? 'STORE',
+                ];
+                $session->save();
+
+                $reply = "*Input Jurnal Transaksi (Langkah 1/5)*\n"
+                    . "━━━━━━━━━━━━━━━━━━━━\n"
+                    . "Masukkan *Catatan / Keterangan Jurnal*:\n\n"
+                    . "_Contoh: Beli air galon kasir atau Setor tunai ke Bank BRI_";
+
+                $inlineKeyboard = [
+                    [['text' => 'Batalkan', 'callback_data' => 'jurnal_act:cancel']]
+                ];
+
+                $this->sendTelegramMessage($token, $chatId, $reply, ['inline_keyboard' => $inlineKeyboard]);
+                return response()->json(['ok' => true]);
+            }
+
+            // E. Proses Login (Input Teks "username password" atau "/login username password")
             $loginText = str_starts_with($text, '/login ') ? substr($text, 7) : $text;
             $parts = preg_split('/\s+/', trim($loginText), 2);
 
@@ -335,6 +491,8 @@ class BotTeleController extends Controller
                             'acosys_user_id' => $user['id'],
                             'acosys_user_name' => $user['name'],
                             'acosys_user_role' => $user['roles'],
+                            'state' => 'idle',
+                            'session_data' => null,
                             'last_active_at' => now(),
                         ]
                     );
@@ -415,9 +573,270 @@ class BotTeleController extends Controller
                     $this->sendTelegramMessage($token, $chatId, "Gagal memuat saldo akun `{$accountId}`.");
                 }
             }
+
+            // Callback Jurnal: Batalkan
+            if ($data === 'jurnal_act:cancel') {
+                $session = BotTeleSession::where('account_id', $setting->account_id)->where('chat_id', $chatId)->first();
+                if ($session) {
+                    $session->state = 'idle';
+                    $session->session_data = null;
+                    $session->save();
+                }
+                $this->sendTelegramMessage($token, $chatId, "Input jurnal telah dibatalkan.");
+                $this->sendReplyMenu($token, $chatId, "Silakan pilih menu di bawah:", $setting->account);
+                return response()->json(['ok' => true]);
+            }
+
+            // Callback Jurnal: Pilih Akun Debit
+            if (str_starts_with($data, 'jacc_d:')) {
+                $accId = substr($data, 7);
+                $session = BotTeleSession::where('account_id', $setting->account_id)->where('chat_id', $chatId)->first();
+                if (!$session) {
+                    return response()->json(['ok' => true]);
+                }
+                $acc = $this->connector->getAccountById($connection, $accId);
+                if (!$acc) {
+                    $this->sendTelegramMessage($token, $chatId, "Akun debit tidak valid.");
+                    return response()->json(['ok' => true]);
+                }
+
+                $sData = $session->session_data ?: [];
+                $sData['debit_account_id'] = $acc['id'];
+                $sData['debit_account_name'] = $acc['name'];
+                $session->session_data = $sData;
+                $session->state = 'jurnal_step_debit_amount';
+                $session->save();
+
+                $msg = "*Input Jurnal Transaksi (Langkah 3/5)*\n"
+                    . "━━━━━━━━━━━━━━━━━━━━\n"
+                    . "Akun Debit : [{$acc['id']}] *{$acc['name']}*\n"
+                    . "Keterangan : _{$sData['memo']}_\n"
+                    . "━━━━━━━━━━━━━━━━━━━━\n"
+                    . "Ketik *Nominal Debit (Rp)*:\n\n"
+                    . "_Contoh: 50000_";
+
+                $inline = [
+                    [['text' => 'Batalkan', 'callback_data' => 'jurnal_act:cancel']]
+                ];
+                $this->sendTelegramMessage($token, $chatId, $msg, ['inline_keyboard' => $inline]);
+                return response()->json(['ok' => true]);
+            }
+
+            // Callback Jurnal: Minta Input Teks Cari Akun Debit
+            if ($data === 'jacc_search:debit') {
+                $session = BotTeleSession::where('account_id', $setting->account_id)->where('chat_id', $chatId)->first();
+                if ($session) {
+                    $session->state = 'jurnal_step_debit_acc';
+                    $session->save();
+                }
+                $this->sendTelegramMessage($token, $chatId, "Silakan ketik kode atau nama akun untuk *Debit*:\n_Contoh: 111 atau Kas_");
+                return response()->json(['ok' => true]);
+            }
+
+            // Callback Jurnal: Pilih Akun Kredit
+            if (str_starts_with($data, 'jacc_c:')) {
+                $accId = substr($data, 7);
+                $session = BotTeleSession::where('account_id', $setting->account_id)->where('chat_id', $chatId)->first();
+                if (!$session) {
+                    return response()->json(['ok' => true]);
+                }
+                $acc = $this->connector->getAccountById($connection, $accId);
+                if (!$acc) {
+                    $this->sendTelegramMessage($token, $chatId, "Akun kredit tidak valid.");
+                    return response()->json(['ok' => true]);
+                }
+
+                $sData = $session->session_data ?: [];
+                $sData['credit_account_id'] = $acc['id'];
+                $sData['credit_account_name'] = $acc['name'];
+                $session->session_data = $sData;
+                $session->state = 'jurnal_step_credit_amount';
+                $session->save();
+
+                $debitAmount = (float)($sData['debit_amount'] ?? 0);
+                $msg = "*Input Jurnal Transaksi (Langkah 5/5)*\n"
+                    . "━━━━━━━━━━━━━━━━━━━━\n"
+                    . "Akun Kredit : [{$acc['id']}] *{$acc['name']}*\n"
+                    . "Nominal Debit: Rp " . number_format($debitAmount, 0, ',', '.') . "\n"
+                    . "━━━━━━━━━━━━━━━━━━━━\n"
+                    . "Ketik *Nominal Kredit (Rp)* atau klik tombol di bawah untuk menyamakan dengan debit:";
+
+                $inline = [
+                    [['text' => "Samakan: Rp " . number_format($debitAmount, 0, ',', '.'), 'callback_data' => 'jcredit_same']],
+                    [['text' => 'Batalkan', 'callback_data' => 'jurnal_act:cancel']]
+                ];
+                $this->sendTelegramMessage($token, $chatId, $msg, ['inline_keyboard' => $inline]);
+                return response()->json(['ok' => true]);
+            }
+
+            // Callback Jurnal: Minta Input Teks Cari Akun Kredit
+            if ($data === 'jacc_search:credit') {
+                $session = BotTeleSession::where('account_id', $setting->account_id)->where('chat_id', $chatId)->first();
+                if ($session) {
+                    $session->state = 'jurnal_step_credit_acc';
+                    $session->save();
+                }
+                $this->sendTelegramMessage($token, $chatId, "Silakan ketik kode atau nama akun untuk *Kredit*:\n_Contoh: 111 atau Kas_");
+                return response()->json(['ok' => true]);
+            }
+
+            // Callback Jurnal: Samakan Nominal Kredit dengan Debit
+            if ($data === 'jcredit_same') {
+                $session = BotTeleSession::where('account_id', $setting->account_id)->where('chat_id', $chatId)->first();
+                if (!$session) {
+                    return response()->json(['ok' => true]);
+                }
+                $sData = $session->session_data ?: [];
+                $sData['credit_amount'] = (float)($sData['debit_amount'] ?? 0);
+                $session->session_data = $sData;
+                $session->state = 'jurnal_step_confirm';
+                $session->save();
+
+                $this->sendJournalConfirmation($token, $chatId, $connection, $sData, $session);
+                return response()->json(['ok' => true]);
+            }
+
+            // Callback Jurnal: Simpan ke Acosys V8
+            if ($data === 'jurnal_act:save') {
+                $session = BotTeleSession::where('account_id', $setting->account_id)->where('chat_id', $chatId)->first();
+                if (!$session || empty($session->session_data)) {
+                    $this->sendTelegramMessage($token, $chatId, "Data jurnal tidak ditemukan atau sesi telah berakhir.");
+                    return response()->json(['ok' => true]);
+                }
+
+                $account = $setting->account;
+                if (!$account || !$account->hasActiveModule('v8_jurnal_tele')) {
+                    $this->sendTelegramMessage($token, $chatId, "Peringatan: Lisensi modul Jurnal Tele toko Anda belum aktif.");
+                    return response()->json(['ok' => true]);
+                }
+
+                $sData = $session->session_data;
+                $sData['user_create'] = $session->acosys_user_name ?: 'TELEGRAM';
+
+                $result = $this->connector->createJournalTransaction($connection, $sData);
+
+                if ($result['status']) {
+                    $session->state = 'idle';
+                    $session->session_data = null;
+                    $session->save();
+
+                    $receipt = "*TRANSAKSI JURNAL TERSIMPAN*\n"
+                        . "━━━━━━━━━━━━━━━━━━━━\n"
+                        . "No. Bukti  : `{$result['jtid']}`\n"
+                        . "Tanggal    : {$result['date']} {$result['time']} WIB\n"
+                        . "Divisi     : {$result['division']}\n"
+                        . "Operator   : {$session->acosys_user_name}\n"
+                        . "━━━━━━━━━━━━━━━━━━━━\n"
+                        . "Keterangan :\n_{$sData['memo']}_\n"
+                        . "━━━━━━━━━━━━━━━━━━━━\n"
+                        . "(D) [{$sData['debit_account_id']}] {$sData['debit_account_name']}\n"
+                        . "    Rp " . number_format($sData['debit_amount'], 0, ',', '.') . "\n"
+                        . "(K) [{$sData['credit_account_id']}] {$sData['credit_account_name']}\n"
+                        . "    Rp " . number_format($sData['credit_amount'], 0, ',', '.') . "\n"
+                        . "━━━━━━━━━━━━━━━━━━━━\n"
+                        . "Status: Approved di Acosys V8";
+
+                    $this->sendTelegramMessage($token, $chatId, $receipt);
+                    $this->sendReplyMenu($token, $chatId, "Silakan pilih menu berikutnya:", $account);
+                } else {
+                    $this->sendTelegramMessage($token, $chatId, "Gagal menyimpan jurnal ke Acosys V8:\n{$result['message']}");
+                }
+                return response()->json(['ok' => true]);
+            }
         }
 
         return response()->json(['ok' => true]);
+    }
+
+    /**
+     * Helper: Menampilkan Pilihan Akun Populer untuk DEBIT
+     */
+    protected function sendDebitAccountPicker(string $token, string $chatId, $connection, string $memo)
+    {
+        $popular = $this->connector->getPopularAccounts($connection, 6);
+        $inline = [];
+        foreach ($popular as $p) {
+            $inline[] = [
+                ['text' => "[{$p['id']}] {$p['name']}", 'callback_data' => "jacc_d:{$p['id']}"]
+            ];
+        }
+        $inline[] = [
+            ['text' => 'Cari Akun Lainnya...', 'callback_data' => 'jacc_search:debit']
+        ];
+        $inline[] = [
+            ['text' => 'Batalkan', 'callback_data' => 'jurnal_act:cancel']
+        ];
+
+        $text = "*Input Jurnal Transaksi (Langkah 2/5)*\n"
+            . "━━━━━━━━━━━━━━━━━━━━\n"
+            . "Keterangan: _{$memo}_\n"
+            . "━━━━━━━━━━━━━━━━━━━━\n"
+            . "*Pilih Akun DEBIT:*\n"
+            . "Klik salah satu akun di bawah atau ketik kode/nama akun:";
+
+        return $this->sendTelegramMessage($token, $chatId, $text, ['inline_keyboard' => $inline]);
+    }
+
+    /**
+     * Helper: Menampilkan Pilihan Akun Populer untuk KREDIT
+     */
+    protected function sendCreditAccountPicker(string $token, string $chatId, $connection, float $amount)
+    {
+        $popular = $this->connector->getPopularAccounts($connection, 6);
+        $inline = [];
+        foreach ($popular as $p) {
+            $inline[] = [
+                ['text' => "[{$p['id']}] {$p['name']}", 'callback_data' => "jacc_c:{$p['id']}"]
+            ];
+        }
+        $inline[] = [
+            ['text' => 'Cari Akun Lainnya...', 'callback_data' => 'jacc_search:credit']
+        ];
+        $inline[] = [
+            ['text' => 'Batalkan', 'callback_data' => 'jurnal_act:cancel']
+        ];
+
+        $text = "*Input Jurnal Transaksi (Langkah 4/5)*\n"
+            . "━━━━━━━━━━━━━━━━━━━━\n"
+            . "Nominal Debit: Rp " . number_format($amount, 0, ',', '.') . "\n"
+            . "━━━━━━━━━━━━━━━━━━━━\n"
+            . "*Pilih Akun KREDIT:*\n"
+            . "Klik salah satu akun di bawah atau ketik kode/nama akun:";
+
+        return $this->sendTelegramMessage($token, $chatId, $text, ['inline_keyboard' => $inline]);
+    }
+
+    /**
+     * Helper: Menampilkan Konfirmasi Struk Jurnal
+     */
+    protected function sendJournalConfirmation(string $token, string $chatId, $connection, array $sData, $session)
+    {
+        $nextId = $this->connector->getNextJournalId($connection, $sData['division_id'] ?? '11');
+
+        $receipt = "*KONFIRMASI JURNAL TRANSAKSI*\n"
+            . "━━━━━━━━━━━━━━━━━━━━\n"
+            . "Estimasi No. : `{$nextId}`\n"
+            . "Divisi       : {$sData['division_name']}\n"
+            . "Tanggal      : " . now()->format('d/m/Y H:i') . " WIB\n"
+            . "Operator     : {$session->acosys_user_name}\n"
+            . "━━━━━━━━━━━━━━━━━━━━\n"
+            . "Keterangan   :\n_{$sData['memo']}_\n"
+            . "━━━━━━━━━━━━━━━━━━━━\n"
+            . "(DEBIT)  : [{$sData['debit_account_id']}] {$sData['debit_account_name']}\n"
+            . "           Rp " . number_format($sData['debit_amount'], 0, ',', '.') . "\n"
+            . "(KREDIT) : [{$sData['credit_account_id']}] {$sData['credit_account_name']}\n"
+            . "           Rp " . number_format($sData['credit_amount'], 0, ',', '.') . "\n"
+            . "━━━━━━━━━━━━━━━━━━━━\n"
+            . "Pastikan data di atas sudah sesuai sebelum menyimpan ke database Acosys V8.";
+
+        $inline = [
+            [
+                ['text' => 'Simpan ke Acosys', 'callback_data' => 'jurnal_act:save'],
+                ['text' => 'Batalkan', 'callback_data' => 'jurnal_act:cancel'],
+            ]
+        ];
+
+        return $this->sendTelegramMessage($token, $chatId, $receipt, ['inline_keyboard' => $inline]);
     }
 
     /**
@@ -431,6 +850,13 @@ class BotTeleController extends Controller
         if ($account && $account->hasActiveModule('v8_buku_besar')) {
             $keyboardRows[] = [
                 ['text' => 'Cek Saldo Buku Besar'],
+            ];
+        }
+
+        // Modul 2: Jurnal Tele (v8_jurnal_tele)
+        if ($account && $account->hasActiveModule('v8_jurnal_tele')) {
+            $keyboardRows[] = [
+                ['text' => 'Jurnal Tele'],
             ];
         }
 

@@ -67,7 +67,7 @@ class ModuleSeeder extends Seeder
                 'updated_at' => now(),
             ],
 
-            // ================= 1 MODUL TUNGGAL ACOSYS V8: CEK BUKU BESAR =================
+            // ================= MODUL ACOSYS V8 =================
             [
                 'code' => 'v8_buku_besar',
                 'name' => 'Cek Buku Besar (Bot Tele)',
@@ -81,6 +81,19 @@ class ModuleSeeder extends Seeder
                 'created_at' => now(),
                 'updated_at' => now(),
             ],
+            [
+                'code' => 'v8_jurnal_tele',
+                'name' => 'Jurnal Tele',
+                'acosys_version' => 'v8',
+                'description' => 'Input transaksi jurnal umum kas & bank langsung dari obrolan Bot Telegram terhubung database Acosys V8.',
+                'icon' => 'edit',
+                'route' => 'modules.v8-jurnal-tele.index',
+                'price_info' => 'Rp 69.000 / bln',
+                'sort_order' => 11,
+                'is_published' => true,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
         ];
 
         foreach ($modules as $mod) {
@@ -90,10 +103,11 @@ class ModuleSeeder extends Seeder
             );
         }
 
-        // Hapus modul V8 eksperimen atau nama lama
-        DB::table('modules')->where('acosys_version', 'v8')->where('code', '!=', 'v8_buku_besar')->delete();
+        // Hapus modul V8 yang tidak ada di daftar
+        $allowedV8 = ['v8_buku_besar', 'v8_jurnal_tele'];
+        DB::table('modules')->where('acosys_version', 'v8')->whereNotIn('code', $allowedV8)->delete();
 
-        // Pastikan akun pertama memiliki modul aktif: pengingat_piutang (V4) dan v8_buku_besar (V8)
+        // Pastikan akun pertama memiliki modul aktif
         $account = Account::first();
         if ($account) {
             $v4Mod = Module::where('code', 'pengingat_piutang')->first();
@@ -104,12 +118,14 @@ class ModuleSeeder extends Seeder
                 );
             }
 
-            $v8Mod = Module::where('code', 'v8_buku_besar')->first();
-            if ($v8Mod) {
-                AccountModule::updateOrCreate(
-                    ['account_id' => $account->id, 'module_id' => $v8Mod->id],
-                    ['is_active' => true, 'starts_at' => now(), 'expires_at' => now()->addYear()]
-                );
+            foreach ($allowedV8 as $v8Code) {
+                $v8Mod = Module::where('code', $v8Code)->first();
+                if ($v8Mod) {
+                    AccountModule::updateOrCreate(
+                        ['account_id' => $account->id, 'module_id' => $v8Mod->id],
+                        ['is_active' => true, 'starts_at' => now(), 'expires_at' => now()->addYear()]
+                    );
+                }
             }
         }
     }

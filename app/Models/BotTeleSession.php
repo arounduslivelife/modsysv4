@@ -17,12 +17,14 @@ class BotTeleSession extends Model
         'acosys_user_name',
         'acosys_user_role',
         'state',
+        'session_data',
         'last_active_at',
     ];
 
     protected function casts(): array
     {
         return [
+            'session_data' => 'array',
             'last_active_at' => 'datetime',
         ];
     }

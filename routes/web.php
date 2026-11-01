@@ -9,6 +9,7 @@ use App\Http\Controllers\ModuleRequestController;
 use App\Http\Controllers\PengingatPiutangController;
 use App\Http\Controllers\SettingsController;
 use App\Http\Controllers\V8BukuBesarController;
+use App\Http\Controllers\V8JurnalTeleController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -107,6 +108,11 @@ Route::middleware('auth')->group(function () {
     // Modul Acosys V8: Cek Buku Besar (Bot Tele)
     Route::prefix('modules/v8-buku-besar')->name('modules.v8-buku-besar.')->group(function () {
         Route::get('/', [V8BukuBesarController::class, 'index'])->name('index');
+    });
+
+    // Modul Acosys V8: Jurnal Tele
+    Route::prefix('modules/v8-jurnal-tele')->name('modules.v8-jurnal-tele.')->group(function () {
+        Route::get('/', [V8JurnalTeleController::class, 'index'])->name('index');
     });
 
     // Alias redirect rute lama

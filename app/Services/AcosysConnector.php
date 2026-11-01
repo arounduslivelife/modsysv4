@@ -437,4 +437,332 @@ class AcosysConnector
             return null;
         }
     }
+
+    /**
+     * Get list of divisions from table division in Acosys V8.
+     */
+    public function getDivisions(AcosysConnection $connection): array
+    {
+        try {
+            $pdo = $this->getPdo($connection);
+            $stmt = $pdo->query("SELECT id, description, frmjournalentryid, journalentryidno FROM division ORDER BY id ASC");
+            return $stmt->fetchAll() ?: [];
+        } catch (\Throwable $e) {
+            return [];
+        }
+    }
+
+    /**
+     * Get default division (store division id '11' or first division).
+     */
+    public function getDefaultDivision(AcosysConnection $connection): ?array
+    {
+        try {
+            $pdo = $this->getPdo($connection);
+            $stmt = $pdo->prepare("SELECT id, description, frmjournalentryid, journalentryidno FROM division WHERE id = '11' LIMIT 1");
+            $stmt->execute();
+            $div = $stmt->fetch();
+            if ($div) return $div;
+
+            $stmt2 = $pdo->query("SELECT id, description, frmjournalentryid, journalentryidno FROM division ORDER BY id ASC LIMIT 1");
+            return $stmt2->fetch() ?: null;
+        } catch (\Throwable $e) {
+            return null;
+        }
+    }
+
+    /**
+     * Search postable accounts (isgroup = 0) in Acosys V8.
+     */
+    public function searchPostableAccounts(AcosysConnection $connection, string $keyword = '', int $limit = 8): array
+    {
+        try {
+            $pdo = $this->getPdo($connection);
+            $sql = "SELECT id, name, accountgroup FROM account WHERE isgroup = 0";
+            $params = [];
+
+            if (!empty($keyword)) {
+                $sql .= " AND (name LIKE :kw1 OR id LIKE :kw2)";
+                $params['kw1'] = "%{$keyword}%";
+                $params['kw2'] = "%{$keyword}%";
+            }
+
+            $sql .= " ORDER BY id ASC LIMIT " . (int)$limit;
+            $stmt = $pdo->prepare($sql);
+            $stmt->execute($params);
+            return $stmt->fetchAll() ?: [];
+        } catch (\Throwable $e) {
+            return [];
+        }
+    }
+
+    /**
+     * Get popular accounts for quick inline keyboard in Bot Telegram.
+     */
+    public function getPopularAccounts(AcosysConnection $connection): array
+    {
+        try {
+            $pdo = $this->getPdo($connection);
+            // Ambil akun kas & bank utama + beberapa akun biaya umum yang ada
+            $popularIds = ['101.001', '102.001', '102.002', '102.003', '603.011', '603.002', '105.001'];
+            $inClause = "'" . implode("','", $popularIds) . "'";
+
+            $stmt = $pdo->query("
+                SELECT id, name, accountgroup 
+                FROM account 
+                WHERE isgroup = 0 AND id IN ($inClause)
+                ORDER BY FIELD(id, $inClause)
+            ");
+            return $stmt->fetchAll() ?: [];
+        } catch (\Throwable $e) {
+            return [];
+        }
+    }
+
+    /**
+     * Get single account detail by ID.
+     */
+    public function getAccountById(AcosysConnection $connection, string $accountId): ?array
+    {
+        try {
+            $pdo = $this->getPdo($connection);
+            $stmt = $pdo->prepare("SELECT id, name, accountgroup, isgroup FROM account WHERE id = :id LIMIT 1");
+            $stmt->execute(['id' => $accountId]);
+            return $stmt->fetch() ?: null;
+        } catch (\Throwable $e) {
+            return null;
+        }
+    }
+
+    /**
+     * Generate next journal ID based on division format and counter.
+     */
+    public function getNextJournalId(AcosysConnection $connection, string $divisionId): array
+    {
+        try {
+            $pdo = $this->getPdo($connection);
+            $stmt = $pdo->prepare("SELECT id, description, frmjournalentryid, journalentryidno FROM division WHERE id = :id LIMIT 1");
+            $stmt->execute(['id' => $divisionId]);
+            $div = $stmt->fetch();
+
+            if (!$div) {
+                return ['jtid' => 'JT-' . time(), 'counter' => 1, 'division_id' => $divisionId, 'division_name' => ''];
+            }
+
+            $pattern = !empty($div['frmjournalentryid']) ? $div['frmjournalentryid'] : 'I/JT-######';
+            $counter = (int)$div['journalentryidno'];
+            $hashCount = substr_count($pattern, '#');
+            if ($hashCount === 0) $hashCount = 6;
+
+            $formattedNum = str_pad((string)$counter, $hashCount, '0', STR_PAD_LEFT);
+            $jtid = str_replace(str_repeat('#', $hashCount), $formattedNum, $pattern);
+
+            return [
+                'jtid' => $jtid,
+                'counter' => $counter,
+                'division_id' => $div['id'],
+                'division_name' => $div['description'] ?? '',
+            ];
+        } catch (\Throwable $e) {
+            return ['jtid' => 'JT-' . time(), 'counter' => 1, 'division_id' => $divisionId, 'division_name' => ''];
+        }
+    }
+
+    /**
+     * Create journal transaction in Acosys V8 (atomic transaction).
+     */
+    public function createJournalTransaction(AcosysConnection $connection, array $data): array
+    {
+        try {
+            $pdo = $this->getPdo($connection);
+            $pdo->beginTransaction();
+
+            $divisionId = (string)($data['division_id'] ?? '11');
+            $memo = trim((string)($data['memo'] ?? ''));
+            $debitAccountId = (string)($data['debit_account_id'] ?? '');
+            $debitAccountName = (string)($data['debit_account_name'] ?? '');
+            $debitAmount = (float)($data['debit_amount'] ?? 0);
+            $creditAccountId = (string)($data['credit_account_id'] ?? '');
+            $creditAccountName = (string)($data['credit_account_name'] ?? '');
+            $creditAmount = (float)($data['credit_amount'] ?? 0);
+            $userId = (string)($data['user_id'] ?? 'admin');
+
+            // 1. Kunci dan ambil nomor urut division
+            $stmtDiv = $pdo->prepare("SELECT id, description, frmjournalentryid, journalentryidno FROM division WHERE id = :id FOR UPDATE");
+            $stmtDiv->execute(['id' => $divisionId]);
+            $div = $stmtDiv->fetch();
+
+            if (!$div) {
+                // Fallback cari divisi pertama jika id tidak ditemukan
+                $stmtDiv2 = $pdo->query("SELECT id, description, frmjournalentryid, journalentryidno FROM division ORDER BY id ASC LIMIT 1 FOR UPDATE");
+                $div = $stmtDiv2->fetch();
+                if ($div) $divisionId = $div['id'];
+            }
+
+            $pattern = !empty($div['frmjournalentryid']) ? $div['frmjournalentryid'] : 'I/JT-######';
+            $counter = (int)($div['journalentryidno'] ?? 1);
+            $hashCount = substr_count($pattern, '#');
+            if ($hashCount === 0) $hashCount = 6;
+
+            $formattedNum = str_pad((string)$counter, $hashCount, '0', STR_PAD_LEFT);
+            $jtid = str_replace(str_repeat('#', $hashCount), $formattedNum, $pattern);
+
+            $jtDate = date('Y-m-d');
+            $jtTime = date('H:i:s');
+            $nowDateTime = date('Y-m-d H:i:s');
+            $journalValue = $debitAmount;
+
+            // 2. Insert Header (tabel journal)
+            $insH = $pdo->prepare("
+                INSERT INTO journal (
+                    jtid, jtdate, jttime, memo, memoedit, division, projectid, journalvalue,
+                    printed, approved, approvalstatus, approvallevel, usercreate, updatetimestamp
+                ) VALUES (
+                    :jtid, :jtdate, :jttime, :memo, '', :division, '', :journalvalue,
+                    0, 1, 0, 0, :usercreate, :updatetimestamp
+                )
+            ");
+            $insH->execute([
+                'jtid' => $jtid,
+                'jtdate' => $jtDate,
+                'jttime' => $jtTime,
+                'memo' => mb_substr($memo, 0, 100),
+                'division' => $divisionId,
+                'journalvalue' => $journalValue,
+                'usercreate' => mb_substr($userId, 0, 16),
+                'updatetimestamp' => $nowDateTime,
+            ]);
+
+            // 3. Insert Baris Debit (tabel journaltrans)
+            $insD = $pdo->prepare("
+                INSERT INTO journaltrans (
+                    jtid, jtdate, memo, accountid, accountname, debit, credit,
+                    division, projectid, approved, usercreate, updatetimestamp
+                ) VALUES (
+                    :jtid, :jtdate, :memo, :accountid, :accountname, :debit, 0,
+                    :division, '', 1, :usercreate, :updatetimestamp
+                )
+            ");
+            $insD->execute([
+                'jtid' => $jtid,
+                'jtdate' => $nowDateTime,
+                'memo' => mb_substr($memo, 0, 100),
+                'accountid' => $debitAccountId,
+                'accountname' => mb_substr($debitAccountName, 0, 150),
+                'debit' => $debitAmount,
+                'division' => $divisionId,
+                'usercreate' => mb_substr($userId, 0, 16),
+                'updatetimestamp' => $nowDateTime,
+            ]);
+
+            // 4. Insert Baris Kredit (tabel journaltrans)
+            $insC = $pdo->prepare("
+                INSERT INTO journaltrans (
+                    jtid, jtdate, memo, accountid, accountname, debit, credit,
+                    division, projectid, approved, usercreate, updatetimestamp
+                ) VALUES (
+                    :jtid, :jtdate, :memo, :accountid, :accountname, 0, :credit,
+                    :division, '', 1, :usercreate, :updatetimestamp
+                )
+            ");
+            $insC->execute([
+                'jtid' => $jtid,
+                'jtdate' => $nowDateTime,
+                'memo' => mb_substr($memo, 0, 100),
+                'accountid' => $creditAccountId,
+                'accountname' => mb_substr($creditAccountName, 0, 150),
+                'credit' => $creditAmount,
+                'division' => $divisionId,
+                'usercreate' => mb_substr($userId, 0, 16),
+                'updatetimestamp' => $nowDateTime,
+            ]);
+
+            // 5. Update nomor urut counter division
+            $upDiv = $pdo->prepare("UPDATE division SET journalentryidno = journalentryidno + 1 WHERE id = :id");
+            $upDiv->execute(['id' => $divisionId]);
+
+            $pdo->commit();
+
+            return [
+                'status' => true,
+                'message' => 'Transaksi jurnal berhasil disimpan ke database Acosys V8.',
+                'jtid' => $jtid,
+                'jtdate' => $jtDate,
+                'jttime' => $jtTime,
+                'memo' => $memo,
+                'journalvalue' => $journalValue,
+                'division_id' => $divisionId,
+                'division_name' => $div['description'] ?? '',
+                'usercreate' => $userId,
+            ];
+        } catch (\Throwable $e) {
+            if (isset($pdo) && $pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            return [
+                'status' => false,
+                'message' => 'Gagal menyimpan transaksi jurnal: ' . $e->getMessage(),
+            ];
+        }
+    }
+
+    /**
+     * Fetch recent journal entries for web UI monitoring.
+     */
+    public function getRecentJournals(AcosysConnection $connection, int $limit = 20): array
+    {
+        try {
+            $pdo = $this->getPdo($connection);
+            $stmt = $pdo->prepare("
+                SELECT jtid, jtdate, jttime, memo, journalvalue, division, usercreate, updatetimestamp
+                FROM journal
+                ORDER BY jtdate DESC, jttime DESC
+                LIMIT :limit
+            ");
+            $stmt->bindValue(':limit', $limit, \PDO::PARAM_INT);
+            $stmt->execute();
+            $journals = $stmt->fetchAll() ?: [];
+
+            $results = [];
+            foreach ($journals as $j) {
+                // Ambil baris-baris debit & kreditnya
+                $lStmt = $pdo->prepare("
+                    SELECT accountid, accountname, debit, credit 
+                    FROM journaltrans 
+                    WHERE jtid = :jtid 
+                    ORDER BY id ASC
+                ");
+                $lStmt->execute(['jtid' => $j['jtid']]);
+                $lines = $lStmt->fetchAll() ?: [];
+
+                $debitAccounts = [];
+                $creditAccounts = [];
+                foreach ($lines as $line) {
+                    if ($line['debit'] > 0) {
+                        $debitAccounts[] = "[{$line['accountid']}] {$line['accountname']} (Rp " . number_format($line['debit'], 0, ',', '.') . ")";
+                    }
+                    if ($line['credit'] > 0) {
+                        $creditAccounts[] = "[{$line['accountid']}] {$line['accountname']} (Rp " . number_format($line['credit'], 0, ',', '.') . ")";
+                    }
+                }
+
+                $results[] = [
+                    'jtid' => $j['jtid'],
+                    'jtdate' => $j['jtdate'],
+                    'jttime' => $j['jttime'],
+                    'memo' => $j['memo'] ?: '-',
+                    'journalvalue' => (float)$j['journalvalue'],
+                    'formatted_value' => 'Rp ' . number_format((float)$j['journalvalue'], 0, ',', '.'),
+                    'division' => $j['division'],
+                    'usercreate' => $j['usercreate'],
+                    'debit_summary' => !empty($debitAccounts) ? implode(', ', $debitAccounts) : '-',
+                    'credit_summary' => !empty($creditAccounts) ? implode(', ', $creditAccounts) : '-',
+                ];
+            }
+
+            return $results;
+        } catch (\Throwable $e) {
+            return [];
+        }
+    }
 }
