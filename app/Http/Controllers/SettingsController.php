@@ -4,13 +4,17 @@ namespace App\Http\Controllers;
 
 use App\Models\AcosysConnection;
 use App\Models\AccountMember;
+use App\Models\BotTeleSetting;
+use App\Models\BotTeleSession;
 use App\Models\User;
 use App\Models\WaDevice;
 use App\Services\AcosysConnector;
 use App\Services\WaGatewayClient;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
+use Throwable;
 
 class SettingsController extends Controller
 {
@@ -239,5 +243,143 @@ class SettingsController extends Controller
         $device->delete();
 
         return back()->with('success', 'Perangkat WhatsApp berhasil dihapus.');
+    }
+
+    /* ================= 4. BOT TELE V8 ================= */
+
+    public function botTele()
+    {
+        $account = $this->getActiveAccount();
+        if (!$account) {
+            return redirect()->route('dashboard');
+        }
+
+        // Cari koneksi Acosys V8 milik akun
+        $v8Connection = $account->connections()->where('acosys_version', 'v8')->first();
+        if (!$v8Connection) {
+            $v8Connection = $account->connections()->first();
+        }
+
+        // Ambil atau buat pengaturan bot
+        $setting = BotTeleSetting::firstOrCreate(
+            ['account_id' => $account->id],
+            [
+                'connection_id' => $v8Connection?->id,
+                'is_active' => true,
+            ]
+        );
+
+        if (!$setting->connection_id && $v8Connection) {
+            $setting->update(['connection_id' => $v8Connection->id]);
+        }
+
+        // Sesi aktif Telegram
+        $activeSessions = BotTeleSession::where('account_id', $account->id)->latest('last_active_at')->get();
+
+        // Webhook URL
+        $secret = md5($account->id . '_bot_tele_v8_salt');
+        $webhookUrl = url("/api/telegram/webhook/{$secret}");
+
+        return view('settings.bot_tele', compact(
+            'account',
+            'v8Connection',
+            'setting',
+            'activeSessions',
+            'webhookUrl'
+        ));
+    }
+
+    public function saveBotTele(Request $request)
+    {
+        $account = $this->getActiveAccount();
+        $setting = BotTeleSetting::firstOrCreate(['account_id' => $account->id]);
+
+        $validated = $request->validate([
+            'bot_token' => 'nullable|string|max:255',
+            'connection_id' => 'nullable|exists:acosys_connections,id',
+            'is_active' => 'nullable|boolean',
+        ]);
+
+        $tokenInput = trim($validated['bot_token'] ?? '');
+        $isTokenChanged = !empty($tokenInput) && ($tokenInput !== $setting->decrypted_bot_token);
+
+        if ($isTokenChanged) {
+            $setting->bot_token = $tokenInput;
+        }
+
+        if (isset($validated['connection_id'])) {
+            $setting->connection_id = $validated['connection_id'];
+        }
+        $setting->is_active = $request->boolean('is_active', true);
+        $setting->save();
+
+        // Jika token diisi, otomatis verifikasi bot via getMe dan daftarkan webhook
+        $effectiveToken = $setting->decrypted_bot_token;
+        if (!empty($effectiveToken)) {
+            $testMe = $setting->testGetMe($effectiveToken);
+
+            if ($testMe['status']) {
+                $setting->bot_username = $testMe['bot_username'] ?? '';
+                $setting->last_test_ok = true;
+                $setting->last_test_at = now();
+                $setting->last_test_message = $testMe['message'];
+                $setting->save();
+
+                // Pasang webhook otomatis ke Telegram
+                $secret = md5($account->id . '_bot_tele_v8_salt');
+                $webhookUrl = url("/api/telegram/webhook/{$secret}");
+
+                try {
+                    $setHookResp = Http::withoutVerifying()
+                        ->timeout(10)
+                        ->post("https://api.telegram.org/bot{$effectiveToken}/setWebhook", [
+                            'url' => $webhookUrl,
+                            'drop_pending_updates' => true,
+                        ]);
+
+                    $hookJson = $setHookResp->json();
+                    if (!empty($hookJson['ok'])) {
+                        return back()->with('success', "Pengaturan tersimpan! Bot @{$setting->bot_username} berhasil terverifikasi & Webhook Telegram aktif.");
+                    } else {
+                        return back()->with('warning', "Bot @{$setting->bot_username} valid, namun pemasangan webhook gagal: " . ($hookJson['description'] ?? ''));
+                    }
+                } catch (Throwable $e) {
+                    return back()->with('success', "Bot @{$setting->bot_username} tersimpan.");
+                }
+            } else {
+                $setting->last_test_ok = false;
+                $setting->last_test_at = now();
+                $setting->last_test_message = $testMe['message'];
+                $setting->save();
+
+                return back()->with('error', "Gagal menghubungkan bot: {$testMe['message']}");
+            }
+        }
+
+        return back()->with('success', 'Pengaturan Bot Tele V8 berhasil disimpan.');
+    }
+
+    public function testBotTele(Request $request)
+    {
+        $account = $this->getActiveAccount();
+        $setting = BotTeleSetting::where('account_id', $account->id)->first();
+
+        if (!$setting || empty($setting->decrypted_bot_token)) {
+            return back()->with('error', 'Bot Token belum diisi.');
+        }
+
+        $chatId = $request->input('chat_id');
+        if (empty($chatId)) {
+            return back()->with('error', 'Masukkan Chat ID Telegram tujuan.');
+        }
+
+        $message = "🤖 *Tes Pesan Konfigurasi dari modsysv4 (Acosys V8)*\n\nKoneksi Bot Telegram Anda berhasil berfungsi dengan baik! Siap melayani modul-modul Acosys V8.";
+        $res = $setting->sendMessage($message, $chatId);
+
+        if ($res['status']) {
+            return back()->with('success', 'Pesan tes berhasil terkirim ke Telegram!');
+        }
+
+        return back()->with('error', $res['message']);
     }
 }

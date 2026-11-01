@@ -236,8 +236,8 @@ class BotTeleController extends Controller
                 if ($session) {
                     $reply = "👋 Halo, *{$session->acosys_user_name}*!\n\n"
                         . "Akun Telegram Anda terhubung ke database kasir *{$connection->label}*.\n\n"
-                        . "Silakan gunakan tombol menu di bawah untuk memeriksa saldo buku besar kasir:";
-                    $this->sendReplyMenu($token, $chatId, $reply);
+                        . "Silakan gunakan tombol menu di bawah untuk mengakses fitur kasir:";
+                    $this->sendReplyMenu($token, $chatId, $reply, $setting->account);
                 } else {
                     $reply = "👋 *Selamat datang di Bot Acosys V8!*\n\n"
                         . "Untuk mengakses informasi saldo kasir dan buku besar, silakan login dengan akun kasir/staf Acosys Anda.\n\n"
@@ -265,6 +265,16 @@ class BotTeleController extends Controller
             if (str_contains($text, 'Saldo Buku Besar') || $text === '/saldo' || str_starts_with($text, '/saldo')) {
                 if (!$session) {
                     $reply = "⚠️ *Akses Ditolak!*\nAnda harus login terlebih dahulu.\n\nKetik format:\n`username password`";
+                    $this->sendTelegramMessage($token, $chatId, $reply);
+                    return response()->json(['ok' => true]);
+                }
+
+                // Validasi Lisensi Modul v8_buku_besar pada akun toko
+                $account = $setting->account;
+                if (!$account || !$account->hasActiveModule('v8_buku_besar')) {
+                    $reply = "⚠️ *Modul Belum Aktif!*\n\n"
+                        . "Fitur *Cek Saldo Buku Besar* belum diaktifkan atau masa langganan toko telah berakhir.\n\n"
+                        . "Silakan hubungi pemilik toko untuk mengaktifkan modul ini di panel web modsysv4.";
                     $this->sendTelegramMessage($token, $chatId, $reply);
                     return response()->json(['ok' => true]);
                 }
@@ -334,7 +344,7 @@ class BotTeleController extends Controller
                         . "Terhubung ke database: *{$connection->label}*\n\n"
                         . "Silakan klik menu di bawah untuk mulai menggunakan bot:";
 
-                    $this->sendReplyMenu($token, $chatId, $reply);
+                    $this->sendReplyMenu($token, $chatId, $reply, $setting->account);
                 } else {
                     $reply = "❌ *Login Gagal!*\n\n"
                         . "{$authResult['message']}\n\n"
@@ -347,7 +357,7 @@ class BotTeleController extends Controller
             // Jika pesan tidak dikenali
             if ($session) {
                 $reply = "Pilihan tidak dikenali. Silakan gunakan tombol di bawah:";
-                $this->sendReplyMenu($token, $chatId, $reply);
+                $this->sendReplyMenu($token, $chatId, $reply, $setting->account);
             } else {
                 $reply = "Ketik `/start` untuk memulai atau login dengan format:\n`username password`";
                 $this->sendTelegramMessage($token, $chatId, $reply);
@@ -374,6 +384,13 @@ class BotTeleController extends Controller
 
                 if (!$session) {
                     $this->sendTelegramMessage($token, $chatId, "⚠️ Sesi Anda telah berakhir. Silakan login kembali dengan `/start`.");
+                    return response()->json(['ok' => true]);
+                }
+
+                // Validasi Lisensi Modul v8_buku_besar
+                $account = $setting->account;
+                if (!$account || !$account->hasActiveModule('v8_buku_besar')) {
+                    $this->sendTelegramMessage($token, $chatId, "⚠️ Lisensi modul Cek Buku Besar toko Anda belum aktif.");
                     return response()->json(['ok' => true]);
                 }
 
@@ -404,19 +421,26 @@ class BotTeleController extends Controller
     }
 
     /**
-     * Helper: Kirim Pesan dengan Reply Keyboard Menu Utama
+     * Helper: Kirim Pesan dengan Reply Keyboard Menu Utama Dinamis sesuai Lisensi Modul Toko
      */
-    protected function sendReplyMenu(string $token, string $chatId, string $text)
+    protected function sendReplyMenu(string $token, string $chatId, string $text, $account = null)
     {
+        $keyboardRows = [];
+
+        // Modul 1: Cek Buku Besar (v8_buku_besar)
+        if ($account && $account->hasActiveModule('v8_buku_besar')) {
+            $keyboardRows[] = [
+                ['text' => '💰 Cek Saldo Buku Besar'],
+            ];
+        }
+
+        // Tombol Logout selalu ada di bagian bawah
+        $keyboardRows[] = [
+            ['text' => '🔒 Logout'],
+        ];
+
         $keyboard = [
-            'keyboard' => [
-                [
-                    ['text' => '💰 Cek Saldo Buku Besar'],
-                ],
-                [
-                    ['text' => '🔒 Logout'],
-                ],
-            ],
+            'keyboard' => $keyboardRows,
             'resize_keyboard' => true,
             'one_time_keyboard' => false,
         ];

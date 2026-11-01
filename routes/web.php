@@ -8,6 +8,7 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\ModuleRequestController;
 use App\Http\Controllers\PengingatPiutangController;
 use App\Http\Controllers\SettingsController;
+use App\Http\Controllers\V8BukuBesarController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -86,6 +87,11 @@ Route::middleware('auth')->group(function () {
         Route::post('/wa-devices', [SettingsController::class, 'storeWaDevice'])->name('wa-device.store');
         Route::get('/wa-devices/{id}/qr', [SettingsController::class, 'getWaDeviceQr'])->name('wa-device.qr');
         Route::delete('/wa-devices/{id}', [SettingsController::class, 'deleteWaDevice'])->name('wa-device.delete');
+
+        // 4. Bot Tele V8 Gateway
+        Route::get('/bot-tele', [SettingsController::class, 'botTele'])->name('bot-tele');
+        Route::post('/bot-tele', [SettingsController::class, 'saveBotTele'])->name('bot-tele.save');
+        Route::post('/bot-tele/test', [SettingsController::class, 'testBotTele'])->name('bot-tele.test');
     });
 
     // Modul 1: Pengingat Piutang WA (Acosys V4)
@@ -98,12 +104,13 @@ Route::middleware('auth')->group(function () {
         Route::post('/settings', [PengingatPiutangController::class, 'saveSettings'])->name('settings.save');
     });
 
-    // Modul Acosys V8: Bot Tele
-    Route::prefix('modules/bot-tele')->name('modules.bot-tele.')->group(function () {
-        Route::get('/', [BotTeleController::class, 'index'])->name('index');
-        Route::post('/settings', [BotTeleController::class, 'saveSettings'])->name('settings.save');
-        Route::post('/test', [BotTeleController::class, 'testNotification'])->name('test');
+    // Modul Acosys V8: Cek Buku Besar (Bot Tele)
+    Route::prefix('modules/v8-buku-besar')->name('modules.v8-buku-besar.')->group(function () {
+        Route::get('/', [V8BukuBesarController::class, 'index'])->name('index');
     });
+
+    // Alias redirect rute lama
+    Route::get('/modules/bot-tele', fn() => redirect()->route('modules.v8-buku-besar.index'));
 
     // Administrator SaaS
     Route::prefix('admin')->name('admin.')->group(function () {

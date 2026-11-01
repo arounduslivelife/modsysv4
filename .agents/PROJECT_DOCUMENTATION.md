@@ -165,4 +165,32 @@ Selain melalui CLI `php artisan schedule:run`, sistem menyediakan endpoint HTTP 
 - **Konfigurasi `.env`:**
   - `GOOGLE_REDIRECT_URI=https://modsysv4.agungds.web.id/auth/google/callback`
 
+---
+
+## 10. Arsitektur Modul Acosys V8 & Gateway Bot Tele
+
+Platform memisahkan antara **Infrastruktur Gateway Telegram** dan **Modul Bisnis Acosys V8 (Add-on Berbayar)**:
+
+1. **Infrastruktur (Konfigurasi &rarr; Bot Tele V8):**
+   - Rute: `/settings/bot-tele` (`settings.bot-tele`).
+   - Menyimpan kredensial token Telegram bot dari `@BotFather` (terenkripsi AES-256 via `Crypt`).
+   - Menghubungkan bot dengan koneksi database kasir Acosys V8 (`acosys_connections`).
+   - Pendaftaran Webhook otomatis ke `https://modsysv4.domain.com/api/telegram/webhook/{secret}`.
+   - Monitoring sesi pengguna Telegram yang sedang login/aktif (`bot_tele_sessions`).
+   - Fitur uji kirim pesan notifikasi.
+
+2. **Modul Bisnis V8 Modular (Katalog SaaS):**
+   - **Modul 1: Cek Buku Besar (Bot Tele)** (`code: v8_buku_besar`):
+     - Rute: `/modules/v8-buku-besar` (`modules.v8-buku-besar.index`).
+     - Menampilkan monitoring akun pembayaran kasir (`paymenttype`) dan saldo realtime dari tabel `journaltrans`.
+     - Lisensi berbasis toko (`account_modules`), dengan harga langganan bulanan/tahunan tersendiri.
+   - **Modularitas Masa Depan:**
+     - Modul-modul baru V8 (misal: *Ringkasan Omset Harian*, *Pantau Stok Kritis*, dll.) akan didaftarkan sebagai modul add-on terpisah di tabel `modules`.
+
+3. **Dynamic Keyboard di Bot Telegram:**
+   - Saat kasir login atau mengirim perintah di Telegram, bot memeriksa lisensi aktif toko pengguna:
+     - Jika toko memiliki modul `v8_buku_besar` aktif, tombol `[ 💰 Cek Saldo Buku Besar ]` otomatis muncul di Reply Keyboard Telegram.
+     - Jika toko belum melanggan modul tersebut atau masa aktif habis, tombol tidak muncul dan akses perintah langsung diblokir dengan pemberitahuan ramah untuk aktivasi modul.
+
+
 

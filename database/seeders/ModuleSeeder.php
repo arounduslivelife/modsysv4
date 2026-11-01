@@ -67,15 +67,15 @@ class ModuleSeeder extends Seeder
                 'updated_at' => now(),
             ],
 
-            // ================= 1 MODUL TUNGGAL ACOSYS V8: BOT TELE =================
+            // ================= 1 MODUL TUNGGAL ACOSYS V8: CEK BUKU BESAR =================
             [
-                'code' => 'bot_tele',
-                'name' => 'Bot Tele',
+                'code' => 'v8_buku_besar',
+                'name' => 'Cek Buku Besar (Bot Tele)',
                 'acosys_version' => 'v8',
-                'description' => 'Bot Telegram interaktif terhubung Acosys V8: login staf/owner, cek saldo buku besar akun kas/bank, dan monitoring toko secara instan via chat Telegram.',
-                'icon' => 'send',
-                'route' => 'modules.bot-tele.index',
-                'price_info' => 'Rp 99.000 / bln',
+                'description' => 'Monitoring saldo buku besar kasir (akun paymenttype) secara realtime langsung dari database Acosys V8 via Bot Telegram.',
+                'icon' => 'credit-card',
+                'route' => 'modules.v8-buku-besar.index',
+                'price_info' => 'Rp 49.000 / bln',
                 'sort_order' => 10,
                 'is_published' => true,
                 'created_at' => now(),
@@ -90,10 +90,10 @@ class ModuleSeeder extends Seeder
             );
         }
 
-        // Hapus modul V8 eksperimen lain jika ada
-        DB::table('modules')->where('acosys_version', 'v8')->where('code', '!=', 'bot_tele')->delete();
+        // Hapus modul V8 eksperimen atau nama lama
+        DB::table('modules')->where('acosys_version', 'v8')->where('code', '!=', 'v8_buku_besar')->delete();
 
-        // Pastikan akun pertama memiliki modul aktif: pengingat_piutang (V4) dan bot_tele (V8)
+        // Pastikan akun pertama memiliki modul aktif: pengingat_piutang (V4) dan v8_buku_besar (V8)
         $account = Account::first();
         if ($account) {
             $v4Mod = Module::where('code', 'pengingat_piutang')->first();
@@ -104,7 +104,7 @@ class ModuleSeeder extends Seeder
                 );
             }
 
-            $v8Mod = Module::where('code', 'bot_tele')->first();
+            $v8Mod = Module::where('code', 'v8_buku_besar')->first();
             if ($v8Mod) {
                 AccountModule::updateOrCreate(
                     ['account_id' => $account->id, 'module_id' => $v8Mod->id],

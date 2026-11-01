@@ -98,6 +98,10 @@
                     <x-icon name="phone" />
                     <span>WhatsApp Gateway</span>
                 </a>
+                <a href="{{ route('settings.bot-tele') }}" class="nav-item {{ request()->routeIs('settings.bot-tele*') ? 'active' : '' }}">
+                    <x-icon name="send" />
+                    <span>Bot Tele V8</span>
+                </a>
                 <a href="{{ route('settings.staff') }}" class="nav-item {{ request()->routeIs('settings.staff*') ? 'active' : '' }}">
                     <x-icon name="users-round" />
                     <span>Staf & Akses</span>
