@@ -57,7 +57,7 @@ Dokumen ini berisi rangkuman arsitektur, panduan teknis, dan catatan penting pen
    - Setiap tombol **WAJIB** memiliki atribut `data-tooltip="..."` untuk informasi pengguna.
    - Posisi tombol konsisten: Aksi halaman di kanan atas, aksi tabel di kolom kanan.
 3. **DILARANG MENGGUNAKAN EMOTICON / EMOJI:**
-   - Seluruh antarmuka web (UI Blade, header, tabel, card, badge, teks bantuan, placeholder, toast/alert) **TIDAK BOLEH MENGGUNAKAN EMOTICON ATAU EMOJI APAPUN** (seperti 🤖, 👋, 💰, 🔒, 🏛, 📊, 💳, 📦, ✅, ❌, dll).
+   - Seluruh antarmuka web (UI Blade, header, tabel, card, badge, teks bantuan, placeholder, toast/alert) **TIDAK BOLEH MENGGUNAKAN EMOTICON ATAU EMOJI APAPUN** (seperti robot, tangan, kantong uang, gembok, grafik, kartu, boks, tanda centang/silang, dan icon grafis karakter lainnya).
    - Tampilan visual murni menggunakan **Icon SVG** (komponen `<x-icon name="..." />`) atau teks bersih profesional.
    - Pesan sistem dan pesan interaksi bot Telegram juga tidak boleh menggunakan emoticon/emoji; gunakan format teks bersih, tebal (`*teks*`), atau miring (`_teks_`).
 4. **Palet Warna Utama:**
@@ -185,16 +185,55 @@ Platform memisahkan antara **Infrastruktur Gateway Telegram** dan **Modul Bisnis
 
 2. **Modul Bisnis V8 Modular (Katalog SaaS):**
    - **Modul 1: Cek Buku Besar (Bot Tele)** (`code: v8_buku_besar`):
-     - Rute: `/modules/v8-buku-besar` (`modules.v8-buku-besar.index`).
-     - Menampilkan monitoring akun pembayaran kasir (`paymenttype`) dan saldo realtime dari tabel `journaltrans`.
+     - Rute Web: `/modules/v8-buku-besar` (`modules.v8-buku-besar.index`).
+     - Fitur Bot: Menampilkan pilihan akun kas/bank populer dan pengecekan saldo realtime dari tabel `journaltrans`.
      - Lisensi berbasis toko (`account_modules`), dengan harga langganan bulanan/tahunan tersendiri.
-   - **Modularitas Masa Depan:**
-     - Modul-modul baru V8 (misal: *Ringkasan Omset Harian*, *Pantau Stok Kritis*, dll.) akan didaftarkan sebagai modul add-on terpisah di tabel `modules`.
+   - **Modul 2: Jurnal Tele (Bot Tele)** (`code: v8_jurnal_tele`):
+     - Rute Web: `/modules/v8-jurnal-tele` (`modules.v8-jurnal-tele.index`).
+     - Fitur Bot: Input transaksi jurnal akuntansi langsung dari obrolan Telegram via conversational flow 5 langkah (Catatan/Memo -> Akun Debit -> Nominal Debit -> Akun Kredit -> Nominal Kredit seimbang -> Konfirmasi & Simpan).
+     - Menghasilkan nomor jurnal otomatis berbasis template formula divisi (`division.journalprefixformula`).
+   - **Modul 3: Cek Stok Produk (Bot Tele)** (`code: v8_cek_stok`):
+     - Rute Web: `/modules/v8-cek-stok` (`modules.v8-cek-stok.index`).
+     - Fitur Bot: Pencarian nama produk, kode barang, atau barcode secara realtime. Menampilkan kartu stok fisik per divisi/gudang toko (`stockbalance`), daftar harga jual multi-satuan (`productunit`), dan status stok minimum.
+   - **Modul 4: Laporan Piutang (Bot Tele)** (`code: v8_laporan_piutang`):
+     - Rute Web: `/modules/v8-laporan-piutang` (`modules.v8-laporan-piutang.index`).
+     - Fitur Bot: Ringkasan piutang usaha toko (`customerbalance`), fitur Top 5 Pelanggan Piutang Terbesar, pencarian cerdas pelanggan, rincian lembar faktur belum lunas (`sales`), serta pemisahan transparan antara total faktur, titipan kredit gantung, dan sisa piutang bersih riil.
+   - **Modul 5: Laporan Hutang (Bot Tele)** (`code: v8_laporan_hutang`):
+     - Rute Web: `/modules/v8-laporan-hutang` (`modules.v8-laporan-hutang.index`).
+     - Fitur Bot: Ringkasan hutang usaha toko ke vendor/supplier (`supplierbalance`), fitur Top 5 Pemasok Hutang Terbesar, pencarian cerdas supplier, rincian faktur pembelian belum lunas (`purchase`), status jatuh tempo (overdue), dan sisa hutang bersih.
 
 3. **Dynamic Keyboard di Bot Telegram:**
    - Saat kasir login atau mengirim perintah di Telegram, bot memeriksa lisensi aktif toko pengguna:
-     - Jika toko memiliki modul `v8_buku_besar` aktif, tombol `[ 💰 Cek Saldo Buku Besar ]` otomatis muncul di Reply Keyboard Telegram.
+     - Jika toko memiliki modul aktif, tombol menu terkait otomatis muncul di Reply Keyboard Telegram (misal: `Cek Saldo Buku Besar`, `Jurnal Tele`, `Cek Stok Produk`, `Laporan Piutang`, `Laporan Hutang`, `Logout`).
      - Jika toko belum melanggan modul tersebut atau masa aktif habis, tombol tidak muncul dan akses perintah langsung diblokir dengan pemberitahuan ramah untuk aktivasi modul.
+
+---
+
+## 11. Arsitektur State Machine & UX Bot Telegram (BotTeleController)
+
+Untuk menjamin pengalaman pengguna kasir yang cepat, responsif, dan bebas error stuck:
+
+1. **Prioritas Menu Navigasi (Menu First Evaluation):**
+   - Perintah dan tombol menu navigasi Reply Keyboard (`/saldo`, `/jurnal`, `/stok`, `/piutang`, `/hutang`, `/logout`) dievaluasi di urutan pertama sebelum status sesi percakapan (`$session->state`).
+   - Hal ini memastikan kasir dapat berpindah menu kapan saja tanpa pernah terjebak di state input sebelumnya.
+
+2. **Auto-Listen Otomatis (Tanpa Klik Ganda):**
+   - Saat kasir menekan tombol menu `Laporan Piutang`, `Laporan Hutang`, atau `Cek Stok Produk`, bot langsung menampilkan kartu ringkasan sekaligus otomatis mengaktifkan status pendengar (`piutang_wait_customer`, `hutang_wait_supplier`, `stok_wait_keyword`).
+   - Pengguna dapat langsung mengetik nama di chat tanpa harus menekan tombol pencarian tambahan.
+
+3. **Pencarian Cerdas & Cross-Category Fallback:**
+   - Mesin pencari di `AcosysConnector` mendukung multi-token matching, relevance ranking, dan fallback 3-karakter prefix.
+   - Jika pengguna keliru mengetik nama pelanggan di menu Laporan Hutang (atau nama pemasok di Laporan Piutang), bot secara cerdas mendeteksi kata kunci di kategori seberang dan memberikan tombol rekomendasi instan untuk membuka rincian kartu tersebut.
+
+4. **Omni-Search Mode Idle:**
+   - Jika pengguna berada di menu utama (idle) dan langsung mengetik teks tanpa memilih modul, bot otomatis mencari ke data Pelanggan, Pemasok, dan Produk secara serentak, lalu menyajikan tombol inline pilihan sehingga bot tidak pernah diam tanpa respon.
+
+5. **Penyajian Data Akuntansi Transparan (Net Balance vs Faktur Aktif):**
+   - Acosys V8 menghitung saldo piutang dan hutang berdasarkan saldo bersih mutasi buku besar (`SUM(debit) - SUM(credit)`).
+   - Jika terdapat selisih antara akumulasi faktur aktif dan saldo netto (akibat kelebihan bayar atau retur lama yang belum di-offset ke faktur baru), kartu rincian bot menyajikan:
+     - Total Faktur Belum Lunas (Gross)
+     - Titipan / Kredit Gantung
+     - Total Piutang/Hutang Bersih (Net)
 
 
 
