@@ -261,19 +261,271 @@ class BotTeleController extends Controller
                 return response()->json(['ok' => true]);
             }
 
-            // B1. Pembatalan Transaksi Jurnal (Ketik 'batal' atau '/batal')
+            // B1. Pembatalan Transaksi / Reset State (Ketik 'batal' atau '/batal')
             if (strtolower($text) === 'batal' || $text === '/batal') {
                 if ($session && $session->state !== 'idle') {
                     $session->state = 'idle';
                     $session->session_data = null;
                     $session->save();
-                    $this->sendTelegramMessage($token, $chatId, "Input jurnal transaksi telah dibatalkan.");
+                    $this->sendTelegramMessage($token, $chatId, "Pencarian atau transaksi telah dibatalkan.");
                     $this->sendReplyMenu($token, $chatId, "Silakan pilih menu di bawah:", $setting->account);
                     return response()->json(['ok' => true]);
                 }
             }
 
-            // B2. Alur Multi-Langkah Input Jurnal Tele (Conversational State Machine)
+            // =================================================================
+            // PRIORITAS 1: MENU NAVIGATION COMMANDS & REPLY KEYBOARD BUTTONS
+            // (Harus dievaluasi sebelum state mesin agar tombol menu selalu responsif)
+            // =================================================================
+
+            // C. Tombol "Cek Saldo Buku Besar" atau command /saldo
+            if (str_contains($text, 'Saldo Buku Besar') || $text === '/saldo' || str_starts_with($text, '/saldo')) {
+                if (!$session) {
+                    $reply = "*Akses Ditolak!*\nAnda harus login terlebih dahulu.\n\nKetik format:\n`username password`";
+                    $this->sendTelegramMessage($token, $chatId, $reply);
+                    return response()->json(['ok' => true]);
+                }
+
+                $account = $setting->account;
+                if (!$account || !$account->hasActiveModule('v8_buku_besar')) {
+                    $reply = "*Modul Belum Aktif!*\n\n"
+                        . "Fitur *Cek Saldo Buku Besar* belum diaktifkan atau masa langganan toko telah berakhir.\n\n"
+                        . "Silakan hubungi pemilik toko untuk mengaktifkan modul ini di panel web modsysv4.";
+                    $this->sendTelegramMessage($token, $chatId, $reply);
+                    return response()->json(['ok' => true]);
+                }
+
+                $session->state = 'idle';
+                $session->session_data = null;
+                $session->save();
+
+                $paymentAccounts = $this->connector->getPaymentAccountsWithBalance($connection);
+                if (empty($paymentAccounts)) {
+                    $reply = "Peringatan: Tidak ditemukan akun pembayaran aktif di tabel `paymenttype` database Acosys V8.";
+                    $this->sendTelegramMessage($token, $chatId, $reply);
+                    return response()->json(['ok' => true]);
+                }
+
+                $inlineKeyboard = [];
+                foreach ($paymentAccounts as $acc) {
+                    $inlineKeyboard[] = [
+                        [
+                            'text' => "[{$acc['account_id']}] {$acc['account_name']} ({$acc['payment_types']})",
+                            'callback_data' => "saldo:{$acc['account_id']}",
+                        ]
+                    ];
+                }
+
+                $reply = "*PILIH AKUN BUKU BESAR*\n\n"
+                    . "Berikut adalah daftar akun pembayaran kasir (Kas & Bank) dari database *{$connection->label}*.\n"
+                    . "Klik akun di bawah untuk melihat saldo realtime:";
+
+                $this->sendTelegramMessage($token, $chatId, $reply, [
+                    'inline_keyboard' => $inlineKeyboard,
+                ]);
+                return response()->json(['ok' => true]);
+            }
+
+            // D. Tombol "Jurnal Tele" atau command /jurnal
+            if (str_contains($text, 'Jurnal Tele') || $text === '/jurnal' || str_starts_with($text, '/jurnal')) {
+                if (!$session) {
+                    $reply = "*Akses Ditolak!*\nAnda harus login terlebih dahulu.\n\nKetik format:\n`username password`";
+                    $this->sendTelegramMessage($token, $chatId, $reply);
+                    return response()->json(['ok' => true]);
+                }
+
+                $account = $setting->account;
+                if (!$account || !$account->hasActiveModule('v8_jurnal_tele')) {
+                    $reply = "*Modul Belum Aktif!*\n\n"
+                        . "Fitur *Jurnal Tele* belum diaktifkan atau masa langganan toko telah berakhir.\n\n"
+                        . "Silakan hubungi pemilik toko untuk mengaktifkan modul ini di panel web modsysv4.";
+                    $this->sendTelegramMessage($token, $chatId, $reply);
+                    return response()->json(['ok' => true]);
+                }
+
+                $defaultDiv = $this->connector->getDefaultDivision($connection);
+                $divisionId = $defaultDiv['id'] ?? '11';
+
+                $session->state = 'jurnal_step_memo';
+                $session->session_data = [
+                    'division_id' => $divisionId,
+                    'division_name' => $defaultDiv['description'] ?? 'STORE',
+                ];
+                $session->save();
+
+                $reply = "*Input Jurnal Transaksi (Langkah 1/5)*\n"
+                    . "━━━━━━━━━━━━━━━━━━━━\n"
+                    . "Masukkan *Catatan / Keterangan Jurnal*:\n\n"
+                    . "_Contoh: Beli air galon kasir atau Setor tunai ke Bank BRI_";
+
+                $inlineKeyboard = [
+                    [['text' => 'Batalkan', 'callback_data' => 'jurnal_act:cancel']]
+                ];
+
+                $this->sendTelegramMessage($token, $chatId, $reply, ['inline_keyboard' => $inlineKeyboard]);
+                return response()->json(['ok' => true]);
+            }
+
+            // E. Tombol "Cek Stok Produk" atau command /stok
+            if (str_contains($text, 'Stok Produk') || $text === '/stok' || str_starts_with($text, '/stok')) {
+                if (!$session) {
+                    $reply = "*Akses Ditolak!*\nAnda harus login terlebih dahulu.\n\nKetik format:\n`username password`";
+                    $this->sendTelegramMessage($token, $chatId, $reply);
+                    return response()->json(['ok' => true]);
+                }
+
+                $account = $setting->account;
+                if (!$account || !$account->hasActiveModule('v8_cek_stok')) {
+                    $reply = "*Modul Belum Aktif!*\n\n"
+                        . "Fitur *Cek Stok Produk* belum diaktifkan atau masa langganan toko telah berakhir.\n\n"
+                        . "Silakan hubungi pemilik toko untuk mengaktifkan modul ini di panel web modsysv4.";
+                    $this->sendTelegramMessage($token, $chatId, $reply);
+                    return response()->json(['ok' => true]);
+                }
+
+                $session->state = 'stok_wait_keyword';
+                $session->session_data = null;
+                $session->save();
+
+                $reply = "*Cek Stok Produk Realtime*\n"
+                    . "━━━━━━━━━━━━━━━━━━━━\n"
+                    . "Silakan ketik *nama produk*, *kode barang*, atau *barcode*:\n\n"
+                    . "_Contoh: Aqua, BTR002, atau 899123456789_";
+
+                $inlineKeyboard = [
+                    [['text' => 'Batalkan', 'callback_data' => 'stok_act:cancel']]
+                ];
+
+                $this->sendTelegramMessage($token, $chatId, $reply, ['inline_keyboard' => $inlineKeyboard]);
+                return response()->json(['ok' => true]);
+            }
+
+            // F. Tombol "Laporan Piutang" atau command /piutang
+            if (str_contains($text, 'Laporan Piutang') || $text === '/piutang' || str_starts_with($text, '/piutang')) {
+                if (!$session) {
+                    $reply = "*Akses Ditolak!*\nAnda harus login terlebih dahulu.\n\nKetik format:\n`username password`";
+                    $this->sendTelegramMessage($token, $chatId, $reply);
+                    return response()->json(['ok' => true]);
+                }
+
+                $account = $setting->account;
+                if (!$account || !$account->hasActiveModule('v8_laporan_piutang')) {
+                    $reply = "*Modul Belum Aktif!*\n\n"
+                        . "Fitur *Laporan Piutang* belum diaktifkan atau masa langganan toko telah berakhir.\n\n"
+                        . "Silakan hubungi pemilik toko untuk mengaktifkan modul ini di panel web modsysv4.";
+                    $this->sendTelegramMessage($token, $chatId, $reply);
+                    return response()->json(['ok' => true]);
+                }
+
+                // Otomatis aktifkan state pencarian pelanggan
+                $session->state = 'piutang_wait_customer';
+                $session->session_data = null;
+                $session->save();
+
+                $summary = $this->connector->getReceivableSummary($connection);
+                $reply = "*RINGKASAN PIUTANG USAHA (Acosys V8)*\n"
+                    . "━━━━━━━━━━━━━━━━━━━━\n"
+                    . "Total Piutang   : *{$summary['formatted_total']}*\n"
+                    . "Jumlah Pelanggan: *{$summary['total_customers']} Pelanggan/Toko*\n"
+                    . "━━━━━━━━━━━━━━━━━━━━\n"
+                    . "Silakan ketik *nama* atau *ID pelanggan* di chat ini (misal: _cisoka_, _bram_, _toko_), atau klik tombol di bawah:";
+
+                $inlineKeyboard = [
+                    [['text' => 'Top 5 Piutang Terbesar', 'callback_data' => 'piutang_act:top']],
+                    [['text' => 'Tutup', 'callback_data' => 'piutang_act:cancel']]
+                ];
+
+                $this->sendTelegramMessage($token, $chatId, $reply, ['inline_keyboard' => $inlineKeyboard]);
+                return response()->json(['ok' => true]);
+            }
+
+            // G. Tombol "Laporan Hutang" atau command /hutang
+            if (str_contains($text, 'Laporan Hutang') || $text === '/hutang' || str_starts_with($text, '/hutang')) {
+                if (!$session) {
+                    $reply = "*Akses Ditolak!*\nAnda harus login terlebih dahulu.\n\nKetik format:\n`username password`";
+                    $this->sendTelegramMessage($token, $chatId, $reply);
+                    return response()->json(['ok' => true]);
+                }
+
+                $account = $setting->account;
+                if (!$account || !$account->hasActiveModule('v8_laporan_hutang')) {
+                    $reply = "*Modul Belum Aktif!*\n\n"
+                        . "Fitur *Laporan Hutang* belum diaktifkan atau masa langganan toko telah berakhir.\n\n"
+                        . "Silakan hubungi pemilik toko untuk mengaktifkan modul ini di panel web modsysv4.";
+                    $this->sendTelegramMessage($token, $chatId, $reply);
+                    return response()->json(['ok' => true]);
+                }
+
+                // Otomatis aktifkan state pencarian pemasok
+                $session->state = 'hutang_wait_supplier';
+                $session->session_data = null;
+                $session->save();
+
+                $summary = $this->connector->getPayableSummary($connection);
+                $reply = "*RINGKASAN HUTANG USAHA (Acosys V8)*\n"
+                    . "━━━━━━━━━━━━━━━━━━━━\n"
+                    . "Total Hutang    : *{$summary['formatted_total']}*\n"
+                    . "Jumlah Pemasok  : *{$summary['total_suppliers']} Supplier/Vendor*\n"
+                    . "━━━━━━━━━━━━━━━━━━━━\n"
+                    . "Silakan ketik *nama* atau *ID pemasok* di chat ini (misal: _pabrik_, _metro_, _camilan_), atau klik tombol di bawah:";
+
+                $inlineKeyboard = [
+                    [['text' => 'Top 5 Hutang Terbesar', 'callback_data' => 'hutang_act:top']],
+                    [['text' => 'Tutup', 'callback_data' => 'hutang_act:cancel']]
+                ];
+
+                $this->sendTelegramMessage($token, $chatId, $reply, ['inline_keyboard' => $inlineKeyboard]);
+                return response()->json(['ok' => true]);
+            }
+
+            // H. Proses Login (Input Teks "username password" atau "/login username password")
+            $loginText = str_starts_with($text, '/login ') ? substr($text, 7) : $text;
+            $parts = preg_split('/\s+/', trim($loginText), 2);
+
+            if (count($parts) === 2 && !$session) {
+                $inputUser = trim($parts[0]);
+                $inputPass = trim($parts[1]);
+
+                if ($messageId) {
+                    $this->deleteTelegramMessage($token, $chatId, $messageId);
+                }
+
+                $authResult = $this->connector->authenticateV8User($connection, $inputUser, $inputPass);
+                if ($authResult['status']) {
+                    $user = $authResult['user'];
+
+                    BotTeleSession::updateOrCreate(
+                        ['account_id' => $setting->account_id, 'chat_id' => $chatId],
+                        [
+                            'acosys_user_id' => $user['id'],
+                            'acosys_user_name' => $user['name'],
+                            'acosys_user_role' => $user['roles'],
+                            'state' => 'idle',
+                            'session_data' => null,
+                            'last_active_at' => now(),
+                        ]
+                    );
+
+                    $reply = "*Login Berhasil!*\n\n"
+                        . "Selamat datang, *{$user['name']}* ({$user['roles']})!\n"
+                        . "Terhubung ke database: *{$connection->label}*\n\n"
+                        . "Silakan klik menu di bawah untuk mulai menggunakan bot:";
+
+                    $this->sendReplyMenu($token, $chatId, $reply, $setting->account);
+                } else {
+                    $reply = "*Login Gagal!*\n\n"
+                        . "{$authResult['message']}\n\n"
+                        . "Silakan coba lagi dengan format:\n`username password`";
+                    $this->sendTelegramMessage($token, $chatId, $reply);
+                }
+                return response()->json(['ok' => true]);
+            }
+
+            // =================================================================
+            // PRIORITAS 2: CONVERSATIONAL STATE MACHINE HANDLERS
+            // =================================================================
+
+            // S1. Alur Multi-Langkah Input Jurnal Tele
             if ($session && str_starts_with($session->state, 'jurnal_step_')) {
                 $sData = $session->session_data ?: [];
 
@@ -375,7 +627,7 @@ class BotTeleController extends Controller
                 }
             }
 
-            // B3. Alur Cek Stok Produk: Input Keyword Pencarian
+            // S2. Alur Cek Stok Produk: Input Keyword Pencarian
             if ($session && $session->state === 'stok_wait_keyword') {
                 $matches = $this->connector->searchProducts($connection, $text, 8);
 
@@ -415,15 +667,35 @@ class BotTeleController extends Controller
                 return response()->json(['ok' => true]);
             }
 
-            // B4. Alur Laporan Piutang: Input Keyword Pelanggan
+            // S3. Alur Laporan Piutang: Input Keyword Pelanggan
             if ($session && $session->state === 'piutang_wait_customer') {
                 $matches = $this->connector->searchCustomerReceivables($connection, $text, 8);
 
                 if (empty($matches)) {
+                    // Cek Silang Cerdas: Barangkali pengguna mengetikkan nama pemasok (hutang)
+                    $suppCross = $this->connector->searchSupplierPayables($connection, $text, 3);
+                    if (!empty($suppCross)) {
+                        $inline = [];
+                        foreach ($suppCross as $sc) {
+                            $inline[] = [
+                                ['text' => "[Pemasok] " . mb_substr($sc['name'], 0, 24) . " ({$sc['formatted_balance']})", 'callback_data' => "hutang_sel:{$sc['supplierid']}"]
+                            ];
+                        }
+                        $inline[] = [['text' => 'Batalkan', 'callback_data' => 'piutang_act:cancel']];
+
+                        $reply = "*Pelanggan Tidak Ditemukan*\n"
+                            . "━━━━━━━━━━━━━━━━━━━━\n"
+                            . "Tidak ada pelanggan berpiutang untuk '{$text}'.\n\n"
+                            . "Namun ditemukan di *Laporan Hutang (Pemasok)*:\n"
+                            . "Klik tombol di bawah jika maksud Anda adalah pemasok:";
+                        $this->sendTelegramMessage($token, $chatId, $reply, ['inline_keyboard' => $inline]);
+                        return response()->json(['ok' => true]);
+                    }
+
                     $reply = "*Pelanggan Tidak Ditemukan*\n"
                         . "━━━━━━━━━━━━━━━━━━━━\n"
                         . "Tidak ada pelanggan berpiutang yang cocok dengan '{$text}'.\n\n"
-                        . "Silakan ketik nama/ID lain atau klik Batalkan:";
+                        . "Silakan ketik nama/ID pelanggan lain atau klik Batalkan:";
                     $inline = [
                         [['text' => 'Batalkan', 'callback_data' => 'piutang_act:cancel']]
                     ];
@@ -442,7 +714,7 @@ class BotTeleController extends Controller
                     ['text' => 'Cari Pelanggan Lain...', 'callback_data' => 'piutang_act:search']
                 ];
                 $inline[] = [
-                    [['text' => 'Batalkan', 'callback_data' => 'piutang_act:cancel']]
+                    ['text' => 'Batalkan', 'callback_data' => 'piutang_act:cancel']
                 ];
 
                 $reply = "*PILIH PELANGGAN (Ditemukan " . count($matches) . "):*\n"
@@ -454,15 +726,35 @@ class BotTeleController extends Controller
                 return response()->json(['ok' => true]);
             }
 
-            // B5. Alur Laporan Hutang: Input Keyword Pemasok
+            // S4. Alur Laporan Hutang: Input Keyword Pemasok
             if ($session && $session->state === 'hutang_wait_supplier') {
                 $matches = $this->connector->searchSupplierPayables($connection, $text, 8);
 
                 if (empty($matches)) {
+                    // Cek Silang Cerdas: Barangkali pengguna mengetikkan nama pelanggan (piutang)
+                    $custCross = $this->connector->searchCustomerReceivables($connection, $text, 3);
+                    if (!empty($custCross)) {
+                        $inline = [];
+                        foreach ($custCross as $cc) {
+                            $inline[] = [
+                                ['text' => "[Pelanggan] " . mb_substr($cc['name'], 0, 24) . " ({$cc['formatted_balance']})", 'callback_data' => "piutang_sel:{$cc['customerid']}"]
+                            ];
+                        }
+                        $inline[] = [['text' => 'Batalkan', 'callback_data' => 'hutang_act:cancel']];
+
+                        $reply = "*Pemasok Tidak Ditemukan*\n"
+                            . "━━━━━━━━━━━━━━━━━━━━\n"
+                            . "Tidak ada pemasok berhutang untuk '{$text}'.\n\n"
+                            . "Namun ditemukan di *Laporan Piutang (Pelanggan)*:\n"
+                            . "Klik tombol di bawah jika maksud Anda adalah pelanggan:";
+                        $this->sendTelegramMessage($token, $chatId, $reply, ['inline_keyboard' => $inline]);
+                        return response()->json(['ok' => true]);
+                    }
+
                     $reply = "*Pemasok Tidak Ditemukan*\n"
                         . "━━━━━━━━━━━━━━━━━━━━\n"
                         . "Tidak ada pemasok berhutang yang cocok dengan '{$text}'.\n\n"
-                        . "Silakan ketik nama/ID lain atau klik Batalkan:";
+                        . "Silakan ketik nama/ID pemasok lain atau klik Batalkan:";
                     $inline = [
                         [['text' => 'Batalkan', 'callback_data' => 'hutang_act:cancel']]
                     ];
@@ -481,7 +773,7 @@ class BotTeleController extends Controller
                     ['text' => 'Cari Pemasok Lain...', 'callback_data' => 'hutang_act:search']
                 ];
                 $inline[] = [
-                    [['text' => 'Batalkan', 'callback_data' => 'hutang_act:cancel']]
+                    ['text' => 'Batalkan', 'callback_data' => 'hutang_act:cancel']
                 ];
 
                 $reply = "*PILIH PEMASOK (Ditemukan " . count($matches) . "):*\n"
@@ -493,250 +785,42 @@ class BotTeleController extends Controller
                 return response()->json(['ok' => true]);
             }
 
-            // C. Tombol "Cek Saldo Buku Besar" atau command /saldo
-            if (str_contains($text, 'Saldo Buku Besar') || $text === '/saldo' || str_starts_with($text, '/saldo')) {
-                if (!$session) {
-                    $reply = "*Akses Ditolak!*\nAnda harus login terlebih dahulu.\n\nKetik format:\n`username password`";
-                    $this->sendTelegramMessage($token, $chatId, $reply);
-                    return response()->json(['ok' => true]);
-                }
-
-                // Validasi Lisensi Modul v8_buku_besar pada akun toko
-                $account = $setting->account;
-                if (!$account || !$account->hasActiveModule('v8_buku_besar')) {
-                    $reply = "*Modul Belum Aktif!*\n\n"
-                        . "Fitur *Cek Saldo Buku Besar* belum diaktifkan atau masa langganan toko telah berakhir.\n\n"
-                        . "Silakan hubungi pemilik toko untuk mengaktifkan modul ini di panel web modsysv4.";
-                    $this->sendTelegramMessage($token, $chatId, $reply);
-                    return response()->json(['ok' => true]);
-                }
-
-                // Ambil payment accounts dari Acosys V8 (tabel paymenttype)
-                $paymentAccounts = $this->connector->getPaymentAccountsWithBalance($connection);
-
-                if (empty($paymentAccounts)) {
-                    $reply = "Peringatan: Tidak ditemukan akun pembayaran aktif di tabel `paymenttype` database Acosys V8.";
-                    $this->sendTelegramMessage($token, $chatId, $reply);
-                    return response()->json(['ok' => true]);
-                }
-
-                // Bangun Inline Keyboard
-                $inlineKeyboard = [];
-                foreach ($paymentAccounts as $acc) {
-                    $inlineKeyboard[] = [
-                        [
-                            'text' => "[{$acc['account_id']}] {$acc['account_name']} ({$acc['payment_types']})",
-                            'callback_data' => "saldo:{$acc['account_id']}",
-                        ]
-                    ];
-                }
-
-                $reply = "*PILIH AKUN BUKU BESAR*\n\n"
-                    . "Berikut adalah daftar akun pembayaran kasir (Kas & Bank) dari database *{$connection->label}*.\n"
-                    . "Klik akun di bawah untuk melihat saldo realtime:";
-
-                $this->sendTelegramMessage($token, $chatId, $reply, [
-                    'inline_keyboard' => $inlineKeyboard,
-                ]);
-                return response()->json(['ok' => true]);
-            }
-
-            // D. Tombol "Jurnal Tele" atau command /jurnal
-            if (str_contains($text, 'Jurnal Tele') || $text === '/jurnal' || str_starts_with($text, '/jurnal')) {
-                if (!$session) {
-                    $reply = "*Akses Ditolak!*\nAnda harus login terlebih dahulu.\n\nKetik format:\n`username password`";
-                    $this->sendTelegramMessage($token, $chatId, $reply);
-                    return response()->json(['ok' => true]);
-                }
-
-                // Validasi Lisensi Modul v8_jurnal_tele pada akun toko
-                $account = $setting->account;
-                if (!$account || !$account->hasActiveModule('v8_jurnal_tele')) {
-                    $reply = "*Modul Belum Aktif!*\n\n"
-                        . "Fitur *Jurnal Tele* belum diaktifkan atau masa langganan toko telah berakhir.\n\n"
-                        . "Silakan hubungi pemilik toko untuk mengaktifkan modul ini di panel web modsysv4.";
-                    $this->sendTelegramMessage($token, $chatId, $reply);
-                    return response()->json(['ok' => true]);
-                }
-
-                // Ambil divisi toko default
-                $defaultDiv = $this->connector->getDefaultDivision($connection);
-                $divisionId = $defaultDiv['id'] ?? '11';
-
-                $session->state = 'jurnal_step_memo';
-                $session->session_data = [
-                    'division_id' => $divisionId,
-                    'division_name' => $defaultDiv['description'] ?? 'STORE',
-                ];
-                $session->save();
-
-                $reply = "*Input Jurnal Transaksi (Langkah 1/5)*\n"
-                    . "━━━━━━━━━━━━━━━━━━━━\n"
-                    . "Masukkan *Catatan / Keterangan Jurnal*:\n\n"
-                    . "_Contoh: Beli air galon kasir atau Setor tunai ke Bank BRI_";
-
-                $inlineKeyboard = [
-                    [['text' => 'Batalkan', 'callback_data' => 'jurnal_act:cancel']]
-                ];
-
-                $this->sendTelegramMessage($token, $chatId, $reply, ['inline_keyboard' => $inlineKeyboard]);
-                return response()->json(['ok' => true]);
-            }
-
-            // E. Tombol "Cek Stok Produk" atau command /stok
-            if (str_contains($text, 'Stok Produk') || $text === '/stok' || str_starts_with($text, '/stok')) {
-                if (!$session) {
-                    $reply = "*Akses Ditolak!*\nAnda harus login terlebih dahulu.\n\nKetik format:\n`username password`";
-                    $this->sendTelegramMessage($token, $chatId, $reply);
-                    return response()->json(['ok' => true]);
-                }
-
-                $account = $setting->account;
-                if (!$account || !$account->hasActiveModule('v8_cek_stok')) {
-                    $reply = "*Modul Belum Aktif!*\n\n"
-                        . "Fitur *Cek Stok Produk* belum diaktifkan atau masa langganan toko telah berakhir.\n\n"
-                        . "Silakan hubungi pemilik toko untuk mengaktifkan modul ini di panel web modsysv4.";
-                    $this->sendTelegramMessage($token, $chatId, $reply);
-                    return response()->json(['ok' => true]);
-                }
-
-                $session->state = 'stok_wait_keyword';
-                $session->session_data = null;
-                $session->save();
-
-                $reply = "*Cek Stok Produk Realtime*\n"
-                    . "━━━━━━━━━━━━━━━━━━━━\n"
-                    . "Silakan ketik *nama produk*, *kode barang*, atau *barcode*:\n\n"
-                    . "_Contoh: Aqua, BTR002, atau 899123456789_";
-
-                $inlineKeyboard = [
-                    [['text' => 'Batalkan', 'callback_data' => 'stok_act:cancel']]
-                ];
-
-                $this->sendTelegramMessage($token, $chatId, $reply, ['inline_keyboard' => $inlineKeyboard]);
-                return response()->json(['ok' => true]);
-            }
-
-            // F. Tombol "Laporan Piutang" atau command /piutang
-            if (str_contains($text, 'Laporan Piutang') || $text === '/piutang' || str_starts_with($text, '/piutang')) {
-                if (!$session) {
-                    $reply = "*Akses Ditolak!*\nAnda harus login terlebih dahulu.\n\nKetik format:\n`username password`";
-                    $this->sendTelegramMessage($token, $chatId, $reply);
-                    return response()->json(['ok' => true]);
-                }
-
-                $account = $setting->account;
-                if (!$account || !$account->hasActiveModule('v8_laporan_piutang')) {
-                    $reply = "*Modul Belum Aktif!*\n\n"
-                        . "Fitur *Laporan Piutang* belum diaktifkan atau masa langganan toko telah berakhir.\n\n"
-                        . "Silakan hubungi pemilik toko untuk mengaktifkan modul ini di panel web modsysv4.";
-                    $this->sendTelegramMessage($token, $chatId, $reply);
-                    return response()->json(['ok' => true]);
-                }
-
-                $summary = $this->connector->getReceivableSummary($connection);
-                $reply = "*RINGKASAN PIUTANG USAHA (Acosys V8)*\n"
-                    . "━━━━━━━━━━━━━━━━━━━━\n"
-                    . "Total Piutang   : *{$summary['formatted_total']}*\n"
-                    . "Jumlah Pelanggan: *{$summary['total_customers']} Pelanggan/Toko*\n"
-                    . "━━━━━━━━━━━━━━━━━━━━\n"
-                    . "Pilih menu di bawah:";
-
-                $inlineKeyboard = [
-                    [['text' => 'Top 5 Piutang Terbesar', 'callback_data' => 'piutang_act:top']],
-                    [['text' => 'Cari Pelanggan...', 'callback_data' => 'piutang_act:search']],
-                    [['text' => 'Tutup', 'callback_data' => 'piutang_act:cancel']]
-                ];
-
-                $this->sendTelegramMessage($token, $chatId, $reply, ['inline_keyboard' => $inlineKeyboard]);
-                return response()->json(['ok' => true]);
-            }
-
-            // G. Tombol "Laporan Hutang" atau command /hutang
-            if (str_contains($text, 'Laporan Hutang') || $text === '/hutang' || str_starts_with($text, '/hutang')) {
-                if (!$session) {
-                    $reply = "*Akses Ditolak!*\nAnda harus login terlebih dahulu.\n\nKetik format:\n`username password`";
-                    $this->sendTelegramMessage($token, $chatId, $reply);
-                    return response()->json(['ok' => true]);
-                }
-
-                $account = $setting->account;
-                if (!$account || !$account->hasActiveModule('v8_laporan_hutang')) {
-                    $reply = "*Modul Belum Aktif!*\n\n"
-                        . "Fitur *Laporan Hutang* belum diaktifkan atau masa langganan toko telah berakhir.\n\n"
-                        . "Silakan hubungi pemilik toko untuk mengaktifkan modul ini di panel web modsysv4.";
-                    $this->sendTelegramMessage($token, $chatId, $reply);
-                    return response()->json(['ok' => true]);
-                }
-
-                $summary = $this->connector->getPayableSummary($connection);
-                $reply = "*RINGKASAN HUTANG USAHA (Acosys V8)*\n"
-                    . "━━━━━━━━━━━━━━━━━━━━\n"
-                    . "Total Hutang    : *{$summary['formatted_total']}*\n"
-                    . "Jumlah Pemasok  : *{$summary['total_suppliers']} Supplier/Vendor*\n"
-                    . "━━━━━━━━━━━━━━━━━━━━\n"
-                    . "Pilih menu di bawah:";
-
-                $inlineKeyboard = [
-                    [['text' => 'Top 5 Hutang Terbesar', 'callback_data' => 'hutang_act:top']],
-                    [['text' => 'Cari Pemasok...', 'callback_data' => 'hutang_act:search']],
-                    [['text' => 'Tutup', 'callback_data' => 'hutang_act:cancel']]
-                ];
-
-                $this->sendTelegramMessage($token, $chatId, $reply, ['inline_keyboard' => $inlineKeyboard]);
-                return response()->json(['ok' => true]);
-            }
-
-            // H. Proses Login (Input Teks "username password" atau "/login username password")
-            $loginText = str_starts_with($text, '/login ') ? substr($text, 7) : $text;
-            $parts = preg_split('/\s+/', trim($loginText), 2);
-
-            if (count($parts) === 2 && !$session) {
-                $inputUser = trim($parts[0]);
-                $inputPass = trim($parts[1]);
-
-                // Hapus pesan password dari riwayat chat demi keamanan (Opsi A)
-                if ($messageId) {
-                    $this->deleteTelegramMessage($token, $chatId, $messageId);
-                }
-
-                // Verifikasi ke database Acosys V8 tabel users
-                $authResult = $this->connector->authenticateV8User($connection, $inputUser, $inputPass);
-
-                if ($authResult['status']) {
-                    $user = $authResult['user'];
-
-                    // Simpan sesi login
-                    BotTeleSession::updateOrCreate(
-                        ['account_id' => $setting->account_id, 'chat_id' => $chatId],
-                        [
-                            'acosys_user_id' => $user['id'],
-                            'acosys_user_name' => $user['name'],
-                            'acosys_user_role' => $user['roles'],
-                            'state' => 'idle',
-                            'session_data' => null,
-                            'last_active_at' => now(),
-                        ]
-                    );
-
-                    $reply = "*Login Berhasil!*\n\n"
-                        . "Selamat datang, *{$user['name']}* ({$user['roles']})!\n"
-                        . "Terhubung ke database: *{$connection->label}*\n\n"
-                        . "Silakan klik menu di bawah untuk mulai menggunakan bot:";
-
-                    $this->sendReplyMenu($token, $chatId, $reply, $setting->account);
-                } else {
-                    $reply = "*Login Gagal!*\n\n"
-                        . "{$authResult['message']}\n\n"
-                        . "Silakan coba lagi dengan format:\n`username password`";
-                    $this->sendTelegramMessage($token, $chatId, $reply);
-                }
-                return response()->json(['ok' => true]);
-            }
-
-            // Jika pesan tidak dikenali
+            // =================================================================
+            // PRIORITAS 3: FALLBACK OMNI-SEARCH / PERINTAH TIDAK DIKENALI
+            // (Memastikan bot tidak pernah diam jika pengguna mengetik saat idle)
+            // =================================================================
             if ($session) {
-                $reply = "Pilihan tidak dikenali. Silakan gunakan tombol di bawah:";
+                // Cari apakah kata kunci cocok dengan pelanggan, pemasok, atau produk
+                $cFound = $this->connector->searchCustomerReceivables($connection, $text, 3);
+                $sFound = $this->connector->searchSupplierPayables($connection, $text, 3);
+                $pFound = $this->connector->searchProducts($connection, $text, 3);
+
+                if (!empty($cFound) || !empty($sFound) || !empty($pFound)) {
+                    $inline = [];
+                    foreach ($cFound as $cf) {
+                        $inline[] = [['text' => "[Piutang] " . mb_substr($cf['name'], 0, 24) . " ({$cf['formatted_balance']})", 'callback_data' => "piutang_sel:{$cf['customerid']}"]];
+                    }
+                    foreach ($sFound as $sf) {
+                        $inline[] = [['text' => "[Hutang] " . mb_substr($sf['name'], 0, 24) . " ({$sf['formatted_balance']})", 'callback_data' => "hutang_sel:{$sf['supplierid']}"]];
+                    }
+                    foreach ($pFound as $pf) {
+                        $pPrice = number_format((float)($pf['salesprice1'] ?? 0), 0, ',', '.');
+                        $inline[] = [['text' => "[Stok] " . mb_substr($pf['name'], 0, 24) . " (Rp {$pPrice})", 'callback_data' => "stok_sel:{$pf['id']}"]];
+                    }
+
+                    $reply = "*HASIL PENCARIAN RELEVAN*\n"
+                        . "━━━━━━━━━━━━━━━━━━━━\n"
+                        . "Ditemukan data yang cocok untuk '{$text}':\n"
+                        . "Klik salah satu opsi di bawah:";
+
+                    $this->sendTelegramMessage($token, $chatId, $reply, ['inline_keyboard' => $inline]);
+                    return response()->json(['ok' => true]);
+                }
+
+                $reply = "*Pilihan Tidak Dikenali*\n"
+                    . "━━━━━━━━━━━━━━━━━━━━\n"
+                    . "Pesan '{$text}' tidak dikenali.\n\n"
+                    . "Silakan gunakan tombol menu di bawah:";
                 $this->sendReplyMenu($token, $chatId, $reply, $setting->account);
             } else {
                 $reply = "Ketik `/start` untuk memulai atau login dengan format:\n`username password`";
@@ -1060,10 +1144,10 @@ class BotTeleController extends Controller
                 $lines[] = "Klik tombol di bawah untuk melihat rincian faktur:";
 
                 $inline[] = [
-                    [['text' => 'Cari Pelanggan Lain', 'callback_data' => 'piutang_act:search']]
+                    ['text' => 'Cari Pelanggan Lain', 'callback_data' => 'piutang_act:search']
                 ];
                 $inline[] = [
-                    [['text' => 'Tutup', 'callback_data' => 'piutang_act:cancel']]
+                    ['text' => 'Tutup', 'callback_data' => 'piutang_act:cancel']
                 ];
 
                 $this->sendTelegramMessage($token, $chatId, implode("\n", $lines), ['inline_keyboard' => $inline]);
@@ -1146,10 +1230,10 @@ class BotTeleController extends Controller
                 $lines[] = "Klik tombol di bawah untuk melihat rincian faktur:";
 
                 $inline[] = [
-                    [['text' => 'Cari Pemasok Lain', 'callback_data' => 'hutang_act:search']]
+                    ['text' => 'Cari Pemasok Lain', 'callback_data' => 'hutang_act:search']
                 ];
                 $inline[] = [
-                    [['text' => 'Tutup', 'callback_data' => 'hutang_act:cancel']]
+                    ['text' => 'Tutup', 'callback_data' => 'hutang_act:cancel']
                 ];
 
                 $this->sendTelegramMessage($token, $chatId, implode("\n", $lines), ['inline_keyboard' => $inline]);
