@@ -9,7 +9,10 @@ use App\Http\Controllers\ModuleRequestController;
 use App\Http\Controllers\PengingatPiutangController;
 use App\Http\Controllers\SettingsController;
 use App\Http\Controllers\V8BukuBesarController;
+use App\Http\Controllers\V8CekStokController;
 use App\Http\Controllers\V8JurnalTeleController;
+use App\Http\Controllers\V8LaporanHutangController;
+use App\Http\Controllers\V8LaporanPiutangController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -117,7 +120,17 @@ Route::middleware('auth')->group(function () {
 
     // Modul Acosys V8: Cek Stok Produk
     Route::prefix('modules/v8-cek-stok')->name('modules.v8-cek-stok.')->group(function () {
-        Route::get('/', [\App\Http\Controllers\V8CekStokController::class, 'index'])->name('index');
+        Route::get('/', [V8CekStokController::class, 'index'])->name('index');
+    });
+
+    // Modul Acosys V8: Laporan Piutang
+    Route::prefix('modules/v8-laporan-piutang')->name('modules.v8-laporan-piutang.')->group(function () {
+        Route::get('/', [V8LaporanPiutangController::class, 'index'])->name('index');
+    });
+
+    // Modul Acosys V8: Laporan Hutang
+    Route::prefix('modules/v8-laporan-hutang')->name('modules.v8-laporan-hutang.')->group(function () {
+        Route::get('/', [V8LaporanHutangController::class, 'index'])->name('index');
     });
 
     // Alias redirect rute lama

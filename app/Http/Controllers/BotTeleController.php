@@ -419,6 +419,92 @@ class BotTeleController extends Controller
                 return response()->json(['ok' => true]);
             }
 
+            // B4. Alur Laporan Piutang: Input Keyword Pelanggan
+            if ($session && $session->state === 'piutang_wait_customer') {
+                $matches = $this->connector->searchCustomerReceivables($connection, $text, 8);
+
+                if (empty($matches)) {
+                    $reply = "*Pelanggan Tidak Ditemukan*\n"
+                        . "━━━━━━━━━━━━━━━━━━━━\n"
+                        . "Tidak ada pelanggan berpiutang yang cocok dengan '{$text}'.\n\n"
+                        . "Silakan ketik nama/ID lain atau klik Batalkan:";
+                    $inline = [
+                        [['text' => 'Batalkan', 'callback_data' => 'piutang_act:cancel']]
+                    ];
+                    $this->sendTelegramMessage($token, $chatId, $reply, ['inline_keyboard' => $inline]);
+                    return response()->json(['ok' => true]);
+                }
+
+                if (count($matches) === 1) {
+                    $session->state = 'idle';
+                    $session->save();
+                    $this->sendCustomerReceivableReceipt($token, $chatId, $connection, $matches[0]['customerid'], $session);
+                    $this->sendReplyMenu($token, $chatId, "Silakan pilih menu berikutnya:", $setting->account);
+                    return response()->json(['ok' => true]);
+                }
+
+                $inline = [];
+                foreach ($matches as $m) {
+                    $label = "[{$m['customerid']}] {$m['name']} ({$m['formatted_balance']})";
+                    $inline[] = [
+                        ['text' => mb_substr($label, 0, 50), 'callback_data' => "piutang_sel:{$m['customerid']}"]
+                    ];
+                }
+                $inline[] = [
+                    [['text' => 'Batalkan', 'callback_data' => 'piutang_act:cancel']]
+                ];
+
+                $reply = "*Pilih Pelanggan:*\n"
+                    . "Ditemukan " . count($matches) . " pelanggan untuk '{$text}':\n"
+                    . "Klik salah satu pelanggan di bawah:";
+
+                $this->sendTelegramMessage($token, $chatId, $reply, ['inline_keyboard' => $inline]);
+                return response()->json(['ok' => true]);
+            }
+
+            // B5. Alur Laporan Hutang: Input Keyword Pemasok
+            if ($session && $session->state === 'hutang_wait_supplier') {
+                $matches = $this->connector->searchSupplierPayables($connection, $text, 8);
+
+                if (empty($matches)) {
+                    $reply = "*Pemasok Tidak Ditemukan*\n"
+                        . "━━━━━━━━━━━━━━━━━━━━\n"
+                        . "Tidak ada pemasok berhutang yang cocok dengan '{$text}'.\n\n"
+                        . "Silakan ketik nama/ID lain atau klik Batalkan:";
+                    $inline = [
+                        [['text' => 'Batalkan', 'callback_data' => 'hutang_act:cancel']]
+                    ];
+                    $this->sendTelegramMessage($token, $chatId, $reply, ['inline_keyboard' => $inline]);
+                    return response()->json(['ok' => true]);
+                }
+
+                if (count($matches) === 1) {
+                    $session->state = 'idle';
+                    $session->save();
+                    $this->sendSupplierPayableReceipt($token, $chatId, $connection, $matches[0]['supplierid'], $session);
+                    $this->sendReplyMenu($token, $chatId, "Silakan pilih menu berikutnya:", $setting->account);
+                    return response()->json(['ok' => true]);
+                }
+
+                $inline = [];
+                foreach ($matches as $m) {
+                    $label = "[{$m['supplierid']}] {$m['name']} ({$m['formatted_balance']})";
+                    $inline[] = [
+                        ['text' => mb_substr($label, 0, 50), 'callback_data' => "hutang_sel:{$m['supplierid']}"]
+                    ];
+                }
+                $inline[] = [
+                    [['text' => 'Batalkan', 'callback_data' => 'hutang_act:cancel']]
+                ];
+
+                $reply = "*Pilih Pemasok:*\n"
+                    . "Ditemukan " . count($matches) . " pemasok untuk '{$text}':\n"
+                    . "Klik salah satu pemasok di bawah:";
+
+                $this->sendTelegramMessage($token, $chatId, $reply, ['inline_keyboard' => $inline]);
+                return response()->json(['ok' => true]);
+            }
+
             // C. Tombol "Cek Saldo Buku Besar" atau command /saldo
             if (str_contains($text, 'Saldo Buku Besar') || $text === '/saldo' || str_starts_with($text, '/saldo')) {
                 if (!$session) {
@@ -543,7 +629,77 @@ class BotTeleController extends Controller
                 return response()->json(['ok' => true]);
             }
 
-            // F. Proses Login (Input Teks "username password" atau "/login username password")
+            // F. Tombol "Laporan Piutang" atau command /piutang
+            if (str_contains($text, 'Laporan Piutang') || $text === '/piutang' || str_starts_with($text, '/piutang')) {
+                if (!$session) {
+                    $reply = "*Akses Ditolak!*\nAnda harus login terlebih dahulu.\n\nKetik format:\n`username password`";
+                    $this->sendTelegramMessage($token, $chatId, $reply);
+                    return response()->json(['ok' => true]);
+                }
+
+                $account = $setting->account;
+                if (!$account || !$account->hasActiveModule('v8_laporan_piutang')) {
+                    $reply = "*Modul Belum Aktif!*\n\n"
+                        . "Fitur *Laporan Piutang* belum diaktifkan atau masa langganan toko telah berakhir.\n\n"
+                        . "Silakan hubungi pemilik toko untuk mengaktifkan modul ini di panel web modsysv4.";
+                    $this->sendTelegramMessage($token, $chatId, $reply);
+                    return response()->json(['ok' => true]);
+                }
+
+                $summary = $this->connector->getReceivableSummary($connection);
+                $reply = "*RINGKASAN PIUTANG USAHA (Acosys V8)*\n"
+                    . "━━━━━━━━━━━━━━━━━━━━\n"
+                    . "Total Piutang   : *{$summary['formatted_total']}*\n"
+                    . "Jumlah Pelanggan: *{$summary['total_customers']} Pelanggan/Toko*\n"
+                    . "━━━━━━━━━━━━━━━━━━━━\n"
+                    . "Pilih menu di bawah:";
+
+                $inlineKeyboard = [
+                    [['text' => 'Top 5 Piutang Terbesar', 'callback_data' => 'piutang_act:top']],
+                    [['text' => 'Cari Pelanggan...', 'callback_data' => 'piutang_act:search']],
+                    [['text' => 'Tutup', 'callback_data' => 'piutang_act:cancel']]
+                ];
+
+                $this->sendTelegramMessage($token, $chatId, $reply, ['inline_keyboard' => $inlineKeyboard]);
+                return response()->json(['ok' => true]);
+            }
+
+            // G. Tombol "Laporan Hutang" atau command /hutang
+            if (str_contains($text, 'Laporan Hutang') || $text === '/hutang' || str_starts_with($text, '/hutang')) {
+                if (!$session) {
+                    $reply = "*Akses Ditolak!*\nAnda harus login terlebih dahulu.\n\nKetik format:\n`username password`";
+                    $this->sendTelegramMessage($token, $chatId, $reply);
+                    return response()->json(['ok' => true]);
+                }
+
+                $account = $setting->account;
+                if (!$account || !$account->hasActiveModule('v8_laporan_hutang')) {
+                    $reply = "*Modul Belum Aktif!*\n\n"
+                        . "Fitur *Laporan Hutang* belum diaktifkan atau masa langganan toko telah berakhir.\n\n"
+                        . "Silakan hubungi pemilik toko untuk mengaktifkan modul ini di panel web modsysv4.";
+                    $this->sendTelegramMessage($token, $chatId, $reply);
+                    return response()->json(['ok' => true]);
+                }
+
+                $summary = $this->connector->getPayableSummary($connection);
+                $reply = "*RINGKASAN HUTANG USAHA (Acosys V8)*\n"
+                    . "━━━━━━━━━━━━━━━━━━━━\n"
+                    . "Total Hutang    : *{$summary['formatted_total']}*\n"
+                    . "Jumlah Pemasok  : *{$summary['total_suppliers']} Supplier/Vendor*\n"
+                    . "━━━━━━━━━━━━━━━━━━━━\n"
+                    . "Pilih menu di bawah:";
+
+                $inlineKeyboard = [
+                    [['text' => 'Top 5 Hutang Terbesar', 'callback_data' => 'hutang_act:top']],
+                    [['text' => 'Cari Pemasok...', 'callback_data' => 'hutang_act:search']],
+                    [['text' => 'Tutup', 'callback_data' => 'hutang_act:cancel']]
+                ];
+
+                $this->sendTelegramMessage($token, $chatId, $reply, ['inline_keyboard' => $inlineKeyboard]);
+                return response()->json(['ok' => true]);
+            }
+
+            // H. Proses Login (Input Teks "username password" atau "/login username password")
             $loginText = str_starts_with($text, '/login ') ? substr($text, 7) : $text;
             $parts = preg_split('/\s+/', trim($loginText), 2);
 
@@ -853,6 +1009,178 @@ class BotTeleController extends Controller
                 $this->sendReplyMenu($token, $chatId, "Silakan pilih menu berikutnya:", $setting->account);
                 return response()->json(['ok' => true]);
             }
+
+            // Callback Piutang: Batalkan
+            if ($data === 'piutang_act:cancel') {
+                $session = BotTeleSession::where('account_id', $setting->account_id)->where('chat_id', $chatId)->first();
+                if ($session) {
+                    $session->state = 'idle';
+                    $session->session_data = null;
+                    $session->save();
+                }
+                $this->sendTelegramMessage($token, $chatId, "Menu piutang ditutup.");
+                $this->sendReplyMenu($token, $chatId, "Silakan pilih menu di bawah:", $setting->account);
+                return response()->json(['ok' => true]);
+            }
+
+            // Callback Piutang: Top 5
+            if ($data === 'piutang_act:top') {
+                $session = BotTeleSession::where('account_id', $setting->account_id)->where('chat_id', $chatId)->first();
+                $top = $this->connector->getTopDebtors($connection, 5);
+
+                if (empty($top)) {
+                    $this->sendTelegramMessage($token, $chatId, "Tidak ada data piutang pelanggan saat ini.");
+                    $this->sendReplyMenu($token, $chatId, "Silakan pilih menu di bawah:", $setting->account);
+                    return response()->json(['ok' => true]);
+                }
+
+                $lines = ["*TOP 5 PIUTANG PELANGGAN TERBESAR*", "━━━━━━━━━━━━━━━━━━━━"];
+                $inline = [];
+                $no = 1;
+                foreach ($top as $t) {
+                    $lines[] = "{$no}. *{$t['name']}* (`{$t['customerid']}`)";
+                    $lines[] = "   Sisa: *{$t['formatted_balance']}*";
+                    $lines[] = "   Telp: {$t['phone']}";
+                    $inline[] = [
+                        ['text' => "{$no}. " . mb_substr($t['name'], 0, 30), 'callback_data' => "piutang_sel:{$t['customerid']}"]
+                    ];
+                    $no++;
+                }
+                $lines[] = "━━━━━━━━━━━━━━━━━━━━";
+                $lines[] = "Klik tombol di bawah untuk melihat rincian faktur:";
+
+                $inline[] = [
+                    [['text' => 'Cari Pelanggan Lain', 'callback_data' => 'piutang_act:search']]
+                ];
+                $inline[] = [
+                    [['text' => 'Tutup', 'callback_data' => 'piutang_act:cancel']]
+                ];
+
+                $this->sendTelegramMessage($token, $chatId, implode("\n", $lines), ['inline_keyboard' => $inline]);
+                return response()->json(['ok' => true]);
+            }
+
+            // Callback Piutang: Form Pencarian
+            if ($data === 'piutang_act:search') {
+                $session = BotTeleSession::where('account_id', $setting->account_id)->where('chat_id', $chatId)->first();
+                if ($session) {
+                    $session->state = 'piutang_wait_customer';
+                    $session->session_data = null;
+                    $session->save();
+                }
+
+                $reply = "*Cari Piutang Pelanggan*\n"
+                    . "━━━━━━━━━━━━━━━━━━━━\n"
+                    . "Silakan ketik *nama pelanggan* atau *ID pelanggan*:\n\n"
+                    . "_Contoh: Toko Berkah atau AGS00359_";
+
+                $inline = [
+                    [['text' => 'Batalkan', 'callback_data' => 'piutang_act:cancel']]
+                ];
+
+                $this->sendTelegramMessage($token, $chatId, $reply, ['inline_keyboard' => $inline]);
+                return response()->json(['ok' => true]);
+            }
+
+            // Callback Piutang: Pilih Pelanggan (Rincian Faktur)
+            if (str_starts_with($data, 'piutang_sel:')) {
+                $cid = substr($data, 12);
+                $session = BotTeleSession::where('account_id', $setting->account_id)->where('chat_id', $chatId)->first();
+                if ($session) {
+                    $session->state = 'idle';
+                    $session->session_data = null;
+                    $session->save();
+                }
+                $this->sendCustomerReceivableReceipt($token, $chatId, $connection, $cid, $session);
+                $this->sendReplyMenu($token, $chatId, "Silakan pilih menu berikutnya:", $setting->account);
+                return response()->json(['ok' => true]);
+            }
+
+            // Callback Hutang: Batalkan
+            if ($data === 'hutang_act:cancel') {
+                $session = BotTeleSession::where('account_id', $setting->account_id)->where('chat_id', $chatId)->first();
+                if ($session) {
+                    $session->state = 'idle';
+                    $session->session_data = null;
+                    $session->save();
+                }
+                $this->sendTelegramMessage($token, $chatId, "Menu hutang ditutup.");
+                $this->sendReplyMenu($token, $chatId, "Silakan pilih menu di bawah:", $setting->account);
+                return response()->json(['ok' => true]);
+            }
+
+            // Callback Hutang: Top 5
+            if ($data === 'hutang_act:top') {
+                $session = BotTeleSession::where('account_id', $setting->account_id)->where('chat_id', $chatId)->first();
+                $top = $this->connector->getTopCreditors($connection, 5);
+
+                if (empty($top)) {
+                    $this->sendTelegramMessage($token, $chatId, "Tidak ada data hutang pemasok saat ini.");
+                    $this->sendReplyMenu($token, $chatId, "Silakan pilih menu di bawah:", $setting->account);
+                    return response()->json(['ok' => true]);
+                }
+
+                $lines = ["*TOP 5 HUTANG PEMASOK TERBESAR*", "━━━━━━━━━━━━━━━━━━━━"];
+                $inline = [];
+                $no = 1;
+                foreach ($top as $t) {
+                    $lines[] = "{$no}. *{$t['name']}* (`{$t['supplierid']}`)";
+                    $lines[] = "   Sisa: *{$t['formatted_balance']}*";
+                    $lines[] = "   Telp: {$t['phone']}";
+                    $inline[] = [
+                        ['text' => "{$no}. " . mb_substr($t['name'], 0, 30), 'callback_data' => "hutang_sel:{$t['supplierid']}"]
+                    ];
+                    $no++;
+                }
+                $lines[] = "━━━━━━━━━━━━━━━━━━━━";
+                $lines[] = "Klik tombol di bawah untuk melihat rincian faktur:";
+
+                $inline[] = [
+                    [['text' => 'Cari Pemasok Lain', 'callback_data' => 'hutang_act:search']]
+                ];
+                $inline[] = [
+                    [['text' => 'Tutup', 'callback_data' => 'hutang_act:cancel']]
+                ];
+
+                $this->sendTelegramMessage($token, $chatId, implode("\n", $lines), ['inline_keyboard' => $inline]);
+                return response()->json(['ok' => true]);
+            }
+
+            // Callback Hutang: Form Pencarian
+            if ($data === 'hutang_act:search') {
+                $session = BotTeleSession::where('account_id', $setting->account_id)->where('chat_id', $chatId)->first();
+                if ($session) {
+                    $session->state = 'hutang_wait_supplier';
+                    $session->session_data = null;
+                    $session->save();
+                }
+
+                $reply = "*Cari Hutang Pemasok*\n"
+                    . "━━━━━━━━━━━━━━━━━━━━\n"
+                    . "Silakan ketik *nama pemasok* atau *ID pemasok*:\n\n"
+                    . "_Contoh: Pabrik atau S0033_";
+
+                $inline = [
+                    [['text' => 'Batalkan', 'callback_data' => 'hutang_act:cancel']]
+                ];
+
+                $this->sendTelegramMessage($token, $chatId, $reply, ['inline_keyboard' => $inline]);
+                return response()->json(['ok' => true]);
+            }
+
+            // Callback Hutang: Pilih Pemasok (Rincian Faktur)
+            if (str_starts_with($data, 'hutang_sel:')) {
+                $sid = substr($data, 11);
+                $session = BotTeleSession::where('account_id', $setting->account_id)->where('chat_id', $chatId)->first();
+                if ($session) {
+                    $session->state = 'idle';
+                    $session->session_data = null;
+                    $session->save();
+                }
+                $this->sendSupplierPayableReceipt($token, $chatId, $connection, $sid, $session);
+                $this->sendReplyMenu($token, $chatId, "Silakan pilih menu berikutnya:", $setting->account);
+                return response()->json(['ok' => true]);
+            }
         }
 
         return response()->json(['ok' => true]);
@@ -1011,6 +1339,88 @@ class BotTeleController extends Controller
     }
 
     /**
+     * Helper: Menampilkan Kartu Informasi Piutang Pelanggan Realtime
+     */
+    protected function sendCustomerReceivableReceipt(string $token, string $chatId, $connection, string $customerId, $session)
+    {
+        $detail = $this->connector->getCustomerReceivableDetail($connection, $customerId);
+        if (!$detail) {
+            $this->sendTelegramMessage($token, $chatId, "Informasi piutang pelanggan `{$customerId}` tidak ditemukan atau sudah lunas.");
+            return;
+        }
+
+        $invLines = [];
+        if (!empty($detail['invoices'])) {
+            foreach ($detail['invoices'] as $inv) {
+                $statusDue = $inv['is_overdue'] ? ' [JATUH TEMPO]' : '';
+                $invLines[] = "- *{$inv['invoice_no']}* ({$inv['invoice_date']})\n"
+                    . "  Sisa: *{$inv['formatted_remaining']}* (Total: {$inv['formatted_total']})\n"
+                    . "  Jatuh Tempo: {$inv['due_date']}{$statusDue}";
+            }
+        } else {
+            $invLines[] = "- Tidak ada faktur penjualan aktif.";
+        }
+
+        $receipt = "*KARTU PIUTANG PELANGGAN*\n"
+            . "━━━━━━━━━━━━━━━━━━━━\n"
+            . "Pelanggan : *{$detail['name']}* (`{$detail['id']}`)\n"
+            . "No. Telp  : {$detail['phone']}\n"
+            . "Alamat    : {$detail['address']}\n"
+            . "━━━━━━━━━━━━━━━━━━━━\n"
+            . "*Total Piutang : {$detail['formatted_balance']}*\n"
+            . "Jumlah Faktur : " . count($detail['invoices']) . " Lembar\n"
+            . "━━━━━━━━━━━━━━━━━━━━\n"
+            . "Rincian Faktur Belum Lunas:\n"
+            . implode("\n\n", $invLines) . "\n"
+            . "━━━━━━━━━━━━━━━━━━━━\n"
+            . "Waktu: " . now()->format('d/m/Y H:i') . " WIB\n"
+            . "Operator: " . ($session->acosys_user_name ?? 'admin');
+
+        $this->sendTelegramMessage($token, $chatId, $receipt);
+    }
+
+    /**
+     * Helper: Menampilkan Kartu Informasi Hutang Pemasok Realtime
+     */
+    protected function sendSupplierPayableReceipt(string $token, string $chatId, $connection, string $supplierId, $session)
+    {
+        $detail = $this->connector->getSupplierPayableDetail($connection, $supplierId);
+        if (!$detail) {
+            $this->sendTelegramMessage($token, $chatId, "Informasi hutang pemasok `{$supplierId}` tidak ditemukan atau sudah lunas.");
+            return;
+        }
+
+        $invLines = [];
+        if (!empty($detail['invoices'])) {
+            foreach ($detail['invoices'] as $inv) {
+                $statusDue = $inv['is_overdue'] ? ' [JATUH TEMPO]' : '';
+                $invLines[] = "- *{$inv['invoice_no']}* ({$inv['invoice_date']})\n"
+                    . "  Sisa: *{$inv['formatted_remaining']}* (Total: {$inv['formatted_total']})\n"
+                    . "  Jatuh Tempo: {$inv['due_date']}{$statusDue}";
+            }
+        } else {
+            $invLines[] = "- Tidak ada faktur pembelian aktif.";
+        }
+
+        $receipt = "*KARTU HUTANG PEMASOK*\n"
+            . "━━━━━━━━━━━━━━━━━━━━\n"
+            . "Pemasok   : *{$detail['name']}* (`{$detail['id']}`)\n"
+            . "No. Telp  : {$detail['phone']}\n"
+            . "Alamat    : {$detail['address']}\n"
+            . "━━━━━━━━━━━━━━━━━━━━\n"
+            . "*Total Hutang : {$detail['formatted_balance']}*\n"
+            . "Jumlah Faktur : " . count($detail['invoices']) . " Lembar\n"
+            . "━━━━━━━━━━━━━━━━━━━━\n"
+            . "Rincian Faktur Belum Lunas:\n"
+            . implode("\n\n", $invLines) . "\n"
+            . "━━━━━━━━━━━━━━━━━━━━\n"
+            . "Waktu: " . now()->format('d/m/Y H:i') . " WIB\n"
+            . "Operator: " . ($session->acosys_user_name ?? 'admin');
+
+        $this->sendTelegramMessage($token, $chatId, $receipt);
+    }
+
+    /**
      * Helper: Kirim Pesan dengan Reply Keyboard Menu Utama Dinamis sesuai Lisensi Modul Toko
      */
     protected function sendReplyMenu(string $token, string $chatId, string $text, $account = null)
@@ -1035,6 +1445,20 @@ class BotTeleController extends Controller
         if ($account && $account->hasActiveModule('v8_cek_stok')) {
             $keyboardRows[] = [
                 ['text' => 'Cek Stok Produk'],
+            ];
+        }
+
+        // Modul 4: Laporan Piutang (v8_laporan_piutang)
+        if ($account && $account->hasActiveModule('v8_laporan_piutang')) {
+            $keyboardRows[] = [
+                ['text' => 'Laporan Piutang'],
+            ];
+        }
+
+        // Modul 5: Laporan Hutang (v8_laporan_hutang)
+        if ($account && $account->hasActiveModule('v8_laporan_hutang')) {
+            $keyboardRows[] = [
+                ['text' => 'Laporan Hutang'],
             ];
         }
 

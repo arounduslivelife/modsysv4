@@ -913,4 +913,342 @@ class AcosysConnector
             return [];
         }
     }
+
+    // =========================================================================
+    // MODUL V8: LAPORAN PIUTANG (customerbalance, customer, sales)
+    // =========================================================================
+
+    /**
+     * Get global accounts receivable summary for Acosys V8.
+     */
+    public function getReceivableSummary(AcosysConnection $connection): array
+    {
+        try {
+            $pdo = $this->getPdo($connection);
+            $stmt = $pdo->query("
+                SELECT 
+                    COUNT(DISTINCT t.customerid) as total_customers,
+                    COALESCE(SUM(t.balance), 0) as total_receivable
+                FROM (
+                    SELECT customerid, (SUM(debit) - SUM(credit)) as balance
+                    FROM customerbalance
+                    GROUP BY customerid
+                    HAVING balance > 0
+                ) t
+            ");
+            $row = $stmt->fetch();
+
+            $totalAmt = (float)($row['total_receivable'] ?? 0);
+            return [
+                'total_customers' => (int)($row['total_customers'] ?? 0),
+                'total_receivable' => $totalAmt,
+                'formatted_total' => 'Rp ' . number_format($totalAmt, 0, ',', '.'),
+            ];
+        } catch (\Throwable $e) {
+            Log::error('getReceivableSummary error: ' . $e->getMessage());
+            return ['total_customers' => 0, 'total_receivable' => 0, 'formatted_total' => 'Rp 0'];
+        }
+    }
+
+    /**
+     * Get top debtors (pelanggan dengan piutang terbesar) in Acosys V8.
+     */
+    public function getTopDebtors(AcosysConnection $connection, int $limit = 5): array
+    {
+        try {
+            $pdo = $this->getPdo($connection);
+            $stmt = $pdo->prepare("
+                SELECT cb.customerid, COALESCE(c.name, cb.customerid) as name,
+                       COALESCE(c.mobilephone, c.telephone, '-') as phone, c.address,
+                       (SUM(cb.debit) - SUM(cb.credit)) as balance
+                FROM customerbalance cb
+                LEFT JOIN customer c ON c.id = cb.customerid
+                GROUP BY cb.customerid, c.name, c.mobilephone, c.telephone, c.address
+                HAVING balance > 0
+                ORDER BY balance DESC
+                LIMIT :limit
+            ");
+            $stmt->bindValue(':limit', $limit, \PDO::PARAM_INT);
+            $stmt->execute();
+
+            $rows = $stmt->fetchAll() ?: [];
+            foreach ($rows as &$r) {
+                $r['balance'] = (float)$r['balance'];
+                $r['formatted_balance'] = 'Rp ' . number_format($r['balance'], 0, ',', '.');
+            }
+            return $rows;
+        } catch (\Throwable $e) {
+            Log::error('getTopDebtors error: ' . $e->getMessage());
+            return [];
+        }
+    }
+
+    /**
+     * Search customers by ID or name with outstanding receivable.
+     */
+    public function searchCustomerReceivables(AcosysConnection $connection, string $keyword, int $limit = 8): array
+    {
+        try {
+            $pdo = $this->getPdo($connection);
+            $cleanKw = trim($keyword);
+            $stmt = $pdo->prepare("
+                SELECT cb.customerid, COALESCE(c.name, cb.customerid) as name,
+                       COALESCE(c.mobilephone, c.telephone, '-') as phone, c.address,
+                       (SUM(cb.debit) - SUM(cb.credit)) as balance
+                FROM customerbalance cb
+                LEFT JOIN customer c ON c.id = cb.customerid
+                WHERE cb.customerid = :kw OR c.name LIKE :kw_like
+                GROUP BY cb.customerid, c.name, c.mobilephone, c.telephone, c.address
+                HAVING balance > 0
+                ORDER BY balance DESC
+                LIMIT :limit
+            ");
+            $stmt->bindValue(':kw', $cleanKw);
+            $stmt->bindValue(':kw_like', "%{$cleanKw}%");
+            $stmt->bindValue(':limit', $limit, \PDO::PARAM_INT);
+            $stmt->execute();
+
+            $rows = $stmt->fetchAll() ?: [];
+            foreach ($rows as &$r) {
+                $r['balance'] = (float)$r['balance'];
+                $r['formatted_balance'] = 'Rp ' . number_format($r['balance'], 0, ',', '.');
+            }
+            return $rows;
+        } catch (\Throwable $e) {
+            Log::error('searchCustomerReceivables error: ' . $e->getMessage());
+            return [];
+        }
+    }
+
+    /**
+     * Get detailed receivables and unpaid invoices for a specific customer in Acosys V8.
+     */
+    public function getCustomerReceivableDetail(AcosysConnection $connection, string $customerId): ?array
+    {
+        try {
+            $pdo = $this->getPdo($connection);
+
+            $stmtC = $pdo->prepare("
+                SELECT id, name, address, telephone, mobilephone, creditlimit
+                FROM customer
+                WHERE id = :id
+                LIMIT 1
+            ");
+            $stmtC->execute(['id' => $customerId]);
+            $cust = $stmtC->fetch();
+
+            if (!$cust) {
+                $cust = ['id' => $customerId, 'name' => $customerId, 'address' => '-', 'telephone' => '-', 'mobilephone' => '-', 'creditlimit' => 0];
+            }
+
+            $stmtInv = $pdo->prepare("
+                SELECT cb.salesidref as invoice_no,
+                       COALESCE(s.salesdate, DATE(MIN(cb.transdate))) as invoice_date,
+                       DATE_ADD(COALESCE(s.salesdate, DATE(MIN(cb.transdate))), INTERVAL COALESCE(s.duedays, 0) DAY) as due_date,
+                       COALESCE(s.salestotal, SUM(cb.debit)) as invoice_total,
+                       (SUM(cb.debit) - SUM(cb.credit)) as remaining_balance
+                FROM customerbalance cb
+                LEFT JOIN sales s ON s.salesid = cb.salesidref
+                WHERE cb.customerid = :cid
+                GROUP BY cb.salesidref, s.salesdate, s.duedays, s.salestotal
+                HAVING remaining_balance > 0
+                ORDER BY invoice_date ASC
+                LIMIT 15
+            ");
+            $stmtInv->execute(['cid' => $customerId]);
+            $invoices = $stmtInv->fetchAll() ?: [];
+
+            $totalBalance = 0;
+            foreach ($invoices as &$inv) {
+                $rem = (float)$inv['remaining_balance'];
+                $totalBalance += $rem;
+                $inv['remaining_balance'] = $rem;
+                $inv['formatted_remaining'] = 'Rp ' . number_format($rem, 0, ',', '.');
+                $inv['formatted_total'] = 'Rp ' . number_format((float)$inv['invoice_total'], 0, ',', '.');
+                $inv['is_overdue'] = !empty($inv['due_date']) && strtotime($inv['due_date']) < strtotime(date('Y-m-d'));
+            }
+
+            return [
+                'id' => $cust['id'],
+                'name' => $cust['name'],
+                'phone' => $cust['mobilephone'] ?: ($cust['telephone'] ?: '-'),
+                'address' => $cust['address'] ?: '-',
+                'total_balance' => $totalBalance,
+                'formatted_balance' => 'Rp ' . number_format($totalBalance, 0, ',', '.'),
+                'invoices' => $invoices,
+            ];
+        } catch (\Throwable $e) {
+            Log::error('getCustomerReceivableDetail error: ' . $e->getMessage());
+            return null;
+        }
+    }
+
+    // =========================================================================
+    // MODUL V8: LAPORAN HUTANG (supplierbalance, supplier, purchase)
+    // =========================================================================
+
+    /**
+     * Get global accounts payable summary for Acosys V8.
+     */
+    public function getPayableSummary(AcosysConnection $connection): array
+    {
+        try {
+            $pdo = $this->getPdo($connection);
+            $stmt = $pdo->query("
+                SELECT 
+                    COUNT(DISTINCT t.supplierid) as total_suppliers,
+                    COALESCE(SUM(t.balance), 0) as total_payable
+                FROM (
+                    SELECT supplierid, (SUM(debit) - SUM(credit)) as balance
+                    FROM supplierbalance
+                    GROUP BY supplierid
+                    HAVING balance > 0
+                ) t
+            ");
+            $row = $stmt->fetch();
+
+            $totalAmt = (float)($row['total_payable'] ?? 0);
+            return [
+                'total_suppliers' => (int)($row['total_suppliers'] ?? 0),
+                'total_payable' => $totalAmt,
+                'formatted_total' => 'Rp ' . number_format($totalAmt, 0, ',', '.'),
+            ];
+        } catch (\Throwable $e) {
+            Log::error('getPayableSummary error: ' . $e->getMessage());
+            return ['total_suppliers' => 0, 'total_payable' => 0, 'formatted_total' => 'Rp 0'];
+        }
+    }
+
+    /**
+     * Get top creditors (pemasok/supplier dengan hutang terbesar) in Acosys V8.
+     */
+    public function getTopCreditors(AcosysConnection $connection, int $limit = 5): array
+    {
+        try {
+            $pdo = $this->getPdo($connection);
+            $stmt = $pdo->prepare("
+                SELECT sb.supplierid, COALESCE(s.name, sb.supplierid) as name,
+                       COALESCE(s.mobilephone, s.telephone, '-') as phone, s.address,
+                       (SUM(sb.debit) - SUM(sb.credit)) as balance
+                FROM supplierbalance sb
+                LEFT JOIN supplier s ON s.id = sb.supplierid
+                GROUP BY sb.supplierid, s.name, s.mobilephone, s.telephone, s.address
+                HAVING balance > 0
+                ORDER BY balance DESC
+                LIMIT :limit
+            ");
+            $stmt->bindValue(':limit', $limit, \PDO::PARAM_INT);
+            $stmt->execute();
+
+            $rows = $stmt->fetchAll() ?: [];
+            foreach ($rows as &$r) {
+                $r['balance'] = (float)$r['balance'];
+                $r['formatted_balance'] = 'Rp ' . number_format($r['balance'], 0, ',', '.');
+            }
+            return $rows;
+        } catch (\Throwable $e) {
+            Log::error('getTopCreditors error: ' . $e->getMessage());
+            return [];
+        }
+    }
+
+    /**
+     * Search suppliers by ID or name with outstanding payable balance.
+     */
+    public function searchSupplierPayables(AcosysConnection $connection, string $keyword, int $limit = 8): array
+    {
+        try {
+            $pdo = $this->getPdo($connection);
+            $cleanKw = trim($keyword);
+            $stmt = $pdo->prepare("
+                SELECT sb.supplierid, COALESCE(s.name, sb.supplierid) as name,
+                       COALESCE(s.mobilephone, s.telephone, '-') as phone, s.address,
+                       (SUM(sb.debit) - SUM(sb.credit)) as balance
+                FROM supplierbalance sb
+                LEFT JOIN supplier s ON s.id = sb.supplierid
+                WHERE sb.supplierid = :kw OR s.name LIKE :kw_like
+                GROUP BY sb.supplierid, s.name, s.mobilephone, s.telephone, s.address
+                HAVING balance > 0
+                ORDER BY balance DESC
+                LIMIT :limit
+            ");
+            $stmt->bindValue(':kw', $cleanKw);
+            $stmt->bindValue(':kw_like', "%{$cleanKw}%");
+            $stmt->bindValue(':limit', $limit, \PDO::PARAM_INT);
+            $stmt->execute();
+
+            $rows = $stmt->fetchAll() ?: [];
+            foreach ($rows as &$r) {
+                $r['balance'] = (float)$r['balance'];
+                $r['formatted_balance'] = 'Rp ' . number_format($r['balance'], 0, ',', '.');
+            }
+            return $rows;
+        } catch (\Throwable $e) {
+            Log::error('searchSupplierPayables error: ' . $e->getMessage());
+            return [];
+        }
+    }
+
+    /**
+     * Get detailed payables and unpaid purchase invoices for a specific supplier in Acosys V8.
+     */
+    public function getSupplierPayableDetail(AcosysConnection $connection, string $supplierId): ?array
+    {
+        try {
+            $pdo = $this->getPdo($connection);
+
+            $stmtS = $pdo->prepare("
+                SELECT id, name, address, telephone, mobilephone, creditlimit
+                FROM supplier
+                WHERE id = :id
+                LIMIT 1
+            ");
+            $stmtS->execute(['id' => $supplierId]);
+            $supp = $stmtS->fetch();
+
+            if (!$supp) {
+                $supp = ['id' => $supplierId, 'name' => $supplierId, 'address' => '-', 'telephone' => '-', 'mobilephone' => '-', 'creditlimit' => 0];
+            }
+
+            $stmtInv = $pdo->prepare("
+                SELECT sb.purchaseidref as invoice_no,
+                       COALESCE(p.purchasedate, DATE(MIN(sb.transdate))) as invoice_date,
+                       DATE_ADD(COALESCE(p.purchasedate, DATE(MIN(sb.transdate))), INTERVAL COALESCE(p.duedays, 0) DAY) as due_date,
+                       COALESCE(p.purchasetotal, SUM(sb.debit)) as invoice_total,
+                       (SUM(sb.debit) - SUM(sb.credit)) as remaining_balance
+                FROM supplierbalance sb
+                LEFT JOIN purchase p ON p.purchaseid = sb.purchaseidref
+                WHERE sb.supplierid = :sid
+                GROUP BY sb.purchaseidref, p.purchasedate, p.duedays, p.purchasetotal
+                HAVING remaining_balance > 0
+                ORDER BY invoice_date ASC
+                LIMIT 15
+            ");
+            $stmtInv->execute(['sid' => $supplierId]);
+            $invoices = $stmtInv->fetchAll() ?: [];
+
+            $totalBalance = 0;
+            foreach ($invoices as &$inv) {
+                $rem = (float)$inv['remaining_balance'];
+                $totalBalance += $rem;
+                $inv['remaining_balance'] = $rem;
+                $inv['formatted_remaining'] = 'Rp ' . number_format($rem, 0, ',', '.');
+                $inv['formatted_total'] = 'Rp ' . number_format((float)$inv['invoice_total'], 0, ',', '.');
+                $inv['is_overdue'] = !empty($inv['due_date']) && strtotime($inv['due_date']) < strtotime(date('Y-m-d'));
+            }
+
+            return [
+                'id' => $supp['id'],
+                'name' => $supp['name'],
+                'phone' => $supp['mobilephone'] ?: ($supp['telephone'] ?: '-'),
+                'address' => $supp['address'] ?: '-',
+                'total_balance' => $totalBalance,
+                'formatted_balance' => 'Rp ' . number_format($totalBalance, 0, ',', '.'),
+                'invoices' => $invoices,
+            ];
+        } catch (\Throwable $e) {
+            Log::error('getSupplierPayableDetail error: ' . $e->getMessage());
+            return null;
+        }
+    }
 }
