@@ -375,6 +375,50 @@ class BotTeleController extends Controller
                 }
             }
 
+            // B3. Alur Cek Stok Produk: Input Keyword Pencarian
+            if ($session && $session->state === 'stok_wait_keyword') {
+                $matches = $this->connector->searchProducts($connection, $text, 8);
+
+                if (empty($matches)) {
+                    $reply = "*Produk Tidak Ditemukan*\n"
+                        . "━━━━━━━━━━━━━━━━━━━━\n"
+                        . "Tidak ada produk yang cocok dengan '{$text}'.\n\n"
+                        . "Silakan ketik kata kunci lain atau klik Batalkan:";
+                    $inline = [
+                        [['text' => 'Batalkan', 'callback_data' => 'stok_act:cancel']]
+                    ];
+                    $this->sendTelegramMessage($token, $chatId, $reply, ['inline_keyboard' => $inline]);
+                    return response()->json(['ok' => true]);
+                }
+
+                if (count($matches) === 1) {
+                    $session->state = 'idle';
+                    $session->save();
+                    $this->sendStockReceipt($token, $chatId, $connection, $matches[0]['id'], $session);
+                    $this->sendReplyMenu($token, $chatId, "Silakan pilih menu berikutnya:", $setting->account);
+                    return response()->json(['ok' => true]);
+                }
+
+                $inline = [];
+                foreach ($matches as $m) {
+                    $priceFormatted = number_format((float)($m['salesprice1'] ?? 0), 0, ',', '.');
+                    $label = "[{$m['id']}] {$m['name']} (Rp {$priceFormatted})";
+                    $inline[] = [
+                        ['text' => mb_substr($label, 0, 50), 'callback_data' => "stok_sel:{$m['id']}"]
+                    ];
+                }
+                $inline[] = [
+                    ['text' => 'Batalkan', 'callback_data' => 'stok_act:cancel']
+                ];
+
+                $reply = "*Pilih Produk:*\n"
+                    . "Ditemukan " . count($matches) . " produk untuk '{$text}':\n"
+                    . "Klik salah satu produk di bawah:";
+
+                $this->sendTelegramMessage($token, $chatId, $reply, ['inline_keyboard' => $inline]);
+                return response()->json(['ok' => true]);
+            }
+
             // C. Tombol "Cek Saldo Buku Besar" atau command /saldo
             if (str_contains($text, 'Saldo Buku Besar') || $text === '/saldo' || str_starts_with($text, '/saldo')) {
                 if (!$session) {
@@ -465,7 +509,41 @@ class BotTeleController extends Controller
                 return response()->json(['ok' => true]);
             }
 
-            // E. Proses Login (Input Teks "username password" atau "/login username password")
+            // E. Tombol "Cek Stok Produk" atau command /stok
+            if (str_contains($text, 'Stok Produk') || $text === '/stok' || str_starts_with($text, '/stok')) {
+                if (!$session) {
+                    $reply = "*Akses Ditolak!*\nAnda harus login terlebih dahulu.\n\nKetik format:\n`username password`";
+                    $this->sendTelegramMessage($token, $chatId, $reply);
+                    return response()->json(['ok' => true]);
+                }
+
+                $account = $setting->account;
+                if (!$account || !$account->hasActiveModule('v8_cek_stok')) {
+                    $reply = "*Modul Belum Aktif!*\n\n"
+                        . "Fitur *Cek Stok Produk* belum diaktifkan atau masa langganan toko telah berakhir.\n\n"
+                        . "Silakan hubungi pemilik toko untuk mengaktifkan modul ini di panel web modsysv4.";
+                    $this->sendTelegramMessage($token, $chatId, $reply);
+                    return response()->json(['ok' => true]);
+                }
+
+                $session->state = 'stok_wait_keyword';
+                $session->session_data = null;
+                $session->save();
+
+                $reply = "*Cek Stok Produk Realtime*\n"
+                    . "━━━━━━━━━━━━━━━━━━━━\n"
+                    . "Silakan ketik *nama produk*, *kode barang*, atau *barcode*:\n\n"
+                    . "_Contoh: Aqua, BTR002, atau 899123456789_";
+
+                $inlineKeyboard = [
+                    [['text' => 'Batalkan', 'callback_data' => 'stok_act:cancel']]
+                ];
+
+                $this->sendTelegramMessage($token, $chatId, $reply, ['inline_keyboard' => $inlineKeyboard]);
+                return response()->json(['ok' => true]);
+            }
+
+            // F. Proses Login (Input Teks "username password" atau "/login username password")
             $loginText = str_starts_with($text, '/login ') ? substr($text, 7) : $text;
             $parts = preg_split('/\s+/', trim($loginText), 2);
 
@@ -748,6 +826,33 @@ class BotTeleController extends Controller
                 }
                 return response()->json(['ok' => true]);
             }
+
+            // Callback Stok: Batalkan
+            if ($data === 'stok_act:cancel') {
+                $session = BotTeleSession::where('account_id', $setting->account_id)->where('chat_id', $chatId)->first();
+                if ($session) {
+                    $session->state = 'idle';
+                    $session->session_data = null;
+                    $session->save();
+                }
+                $this->sendTelegramMessage($token, $chatId, "Pencarian stok telah dibatalkan.");
+                $this->sendReplyMenu($token, $chatId, "Silakan pilih menu di bawah:", $setting->account);
+                return response()->json(['ok' => true]);
+            }
+
+            // Callback Stok: Pilih Produk
+            if (str_starts_with($data, 'stok_sel:')) {
+                $pid = substr($data, 9);
+                $session = BotTeleSession::where('account_id', $setting->account_id)->where('chat_id', $chatId)->first();
+                if ($session) {
+                    $session->state = 'idle';
+                    $session->session_data = null;
+                    $session->save();
+                }
+                $this->sendStockReceipt($token, $chatId, $connection, $pid, $session);
+                $this->sendReplyMenu($token, $chatId, "Silakan pilih menu berikutnya:", $setting->account);
+                return response()->json(['ok' => true]);
+            }
         }
 
         return response()->json(['ok' => true]);
@@ -856,6 +961,56 @@ class BotTeleController extends Controller
     }
 
     /**
+     * Helper: Menampilkan Kartu Informasi Stok Realtime
+     */
+    protected function sendStockReceipt(string $token, string $chatId, $connection, string $productId, $session)
+    {
+        $detail = $this->connector->getProductStockDetail($connection, $productId);
+        if (!$detail) {
+            $this->sendTelegramMessage($token, $chatId, "Informasi stok produk `{$productId}` tidak ditemukan.");
+            return;
+        }
+
+        $divLines = [];
+        if (!empty($detail['division_stocks'])) {
+            foreach ($detail['division_stocks'] as $ds) {
+                $divLines[] = "- {$ds['division_name']} : " . number_format($ds['stock_qty'], 0, ',', '.') . " {$detail['primary_unit']}";
+            }
+        } else {
+            $divLines[] = "- Belum ada mutasi stok fisik di semua lokasi";
+        }
+
+        $unitPrices = [];
+        if (!empty($detail['units'])) {
+            foreach ($detail['units'] as $u) {
+                $p1 = number_format((float)($u['salesprice1'] ?? 0), 0, ',', '.');
+                $unitPrices[] = "{$u['name']}: Rp {$p1}";
+            }
+        }
+
+        $pricesText = !empty($unitPrices) ? implode(' | ', $unitPrices) : $detail['formatted_price'];
+
+        $receipt = "*KARTU STOK REALTIME*\n"
+            . "━━━━━━━━━━━━━━━━━━━━\n"
+            . "Kode Barang : `{$detail['id']}`\n"
+            . "Barcode     : `{$detail['aliasid']}`\n"
+            . "Nama Produk : *{$detail['name']}*\n"
+            . "Brand       : {$detail['brand']}\n"
+            . "━━━━━━━━━━━━━━━━━━━━\n"
+            . "Harga Jual  : {$pricesText}\n"
+            . "*Sisa Stok   : " . number_format($detail['total_stock'], 0, ',', '.') . " {$detail['primary_unit']}*\n"
+            . "Stok Min.   : " . number_format($detail['minimum'], 0, ',', '.') . " {$detail['primary_unit']}\n"
+            . "Status Stok : {$detail['status_text']}\n"
+            . "━━━━━━━━━━━━━━━━━━━━\n"
+            . "Lokasi Divisi:\n" . implode("\n", $divLines) . "\n"
+            . "━━━━━━━━━━━━━━━━━━━━\n"
+            . "Waktu: " . now()->format('d/m/Y H:i') . " WIB\n"
+            . "Operator: " . ($session->acosys_user_name ?? 'admin');
+
+        $this->sendTelegramMessage($token, $chatId, $receipt);
+    }
+
+    /**
      * Helper: Kirim Pesan dengan Reply Keyboard Menu Utama Dinamis sesuai Lisensi Modul Toko
      */
     protected function sendReplyMenu(string $token, string $chatId, string $text, $account = null)
@@ -873,6 +1028,13 @@ class BotTeleController extends Controller
         if ($account && $account->hasActiveModule('v8_jurnal_tele')) {
             $keyboardRows[] = [
                 ['text' => 'Jurnal Tele'],
+            ];
+        }
+
+        // Modul 3: Cek Stok Produk (v8_cek_stok)
+        if ($account && $account->hasActiveModule('v8_cek_stok')) {
+            $keyboardRows[] = [
+                ['text' => 'Cek Stok Produk'],
             ];
         }
 

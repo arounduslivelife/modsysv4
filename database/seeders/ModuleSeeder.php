@@ -94,6 +94,45 @@ class ModuleSeeder extends Seeder
                 'created_at' => now(),
                 'updated_at' => now(),
             ],
+            [
+                'code' => 'v8_cek_stok',
+                'name' => 'Cek Stok Produk',
+                'acosys_version' => 'v8',
+                'description' => 'Pengecekan stok fisik barang dan harga kasir realtime via Bot Telegram terhubung database Acosys V8.',
+                'icon' => 'package',
+                'route' => 'modules.v8-cek-stok.index',
+                'price_info' => 'Rp 59.000 / bln',
+                'sort_order' => 12,
+                'is_published' => true,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'code' => 'v8_laporan_piutang',
+                'name' => 'Laporan Piutang',
+                'acosys_version' => 'v8',
+                'description' => 'Monitoring piutang pelanggan dan faktur belum lunas via Bot Telegram & Web terhubung database Acosys V8.',
+                'icon' => 'file-text',
+                'route' => 'modules.v8-laporan-piutang.index',
+                'price_info' => 'Rp 69.000 / bln',
+                'sort_order' => 13,
+                'is_published' => true,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'code' => 'v8_laporan_hutang',
+                'name' => 'Laporan Hutang',
+                'acosys_version' => 'v8',
+                'description' => 'Monitoring hutang pemasok dagang dan jatuh tempo pembelian via Bot Telegram & Web terhubung database Acosys V8.',
+                'icon' => 'truck',
+                'route' => 'modules.v8-laporan-hutang.index',
+                'price_info' => 'Rp 69.000 / bln',
+                'sort_order' => 14,
+                'is_published' => true,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
         ];
 
         foreach ($modules as $mod) {
@@ -104,7 +143,7 @@ class ModuleSeeder extends Seeder
         }
 
         // Hapus modul V8 yang tidak ada di daftar
-        $allowedV8 = ['v8_buku_besar', 'v8_jurnal_tele'];
+        $allowedV8 = ['v8_buku_besar', 'v8_jurnal_tele', 'v8_cek_stok', 'v8_laporan_piutang', 'v8_laporan_hutang'];
         DB::table('modules')->where('acosys_version', 'v8')->whereNotIn('code', $allowedV8)->delete();
 
         // Pastikan akun pertama memiliki modul aktif

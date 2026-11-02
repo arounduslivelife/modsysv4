@@ -770,4 +770,147 @@ class AcosysConnector
             return [];
         }
     }
+
+    /**
+     * Search products by ID, alias ID (barcode), or name in Acosys V8.
+     */
+    public function searchProducts(AcosysConnection $connection, string $keyword, int $limit = 8): array
+    {
+        try {
+            $pdo = $this->getPdo($connection);
+            $cleanKw = trim($keyword);
+            $stmt = $pdo->prepare("
+                SELECT p.id, p.name, p.aliasid, p.brand, p.minimum,
+                       u.name as unit_name, u.salesprice1
+                FROM product p
+                LEFT JOIN units u ON u.productid = p.id AND u.isactive = 1
+                WHERE p.id = :kw OR p.aliasid = :kw OR p.name LIKE :kw_like
+                ORDER BY p.name ASC
+                LIMIT :limit
+            ");
+            $stmt->bindValue(':kw', $cleanKw);
+            $stmt->bindValue(':kw_like', "%{$cleanKw}%");
+            $stmt->bindValue(':limit', $limit, \PDO::PARAM_INT);
+            $stmt->execute();
+
+            return $stmt->fetchAll() ?: [];
+        } catch (\Throwable $e) {
+            Log::error('searchProducts error: ' . $e->getMessage());
+            return [];
+        }
+    }
+
+    /**
+     * Get complete real-time stock details for a specific product in Acosys V8.
+     */
+    public function getProductStockDetail(AcosysConnection $connection, string $productId): ?array
+    {
+        try {
+            $pdo = $this->getPdo($connection);
+
+            // 1. Ambil data master produk
+            $stmtP = $pdo->prepare("
+                SELECT id, aliasid, name, description, brand, minimum, category
+                FROM product
+                WHERE id = :id
+                LIMIT 1
+            ");
+            $stmtP->execute(['id' => $productId]);
+            $product = $stmtP->fetch();
+
+            if (!$product) {
+                return null;
+            }
+
+            // 2. Ambil data satuan dan harga jual kasir
+            $stmtU = $pdo->prepare("
+                SELECT name, quantity, costprice, salesprice1, salesprice2
+                FROM units
+                WHERE productid = :pid AND isactive = 1
+                ORDER BY quantity ASC
+            ");
+            $stmtU->execute(['pid' => $productId]);
+            $units = $stmtU->fetchAll() ?: [];
+
+            // 3. Hitung total sisa stok fisik realtime dari inventory
+            $stmtStock = $pdo->prepare("
+                SELECT COALESCE(SUM(invin - invout), 0) as total_stock
+                FROM inventory
+                WHERE productid = :pid
+            ");
+            $stmtStock->execute(['pid' => $productId]);
+            $totalStock = (float)$stmtStock->fetchColumn();
+
+            // 4. Hitung rincian stok per lokasi divisi
+            $stmtDiv = $pdo->prepare("
+                SELECT i.division, COALESCE(d.description, CONCAT('Divisi ', i.division)) as division_name,
+                       COALESCE(SUM(i.invin - i.invout), 0) as stock_qty
+                FROM inventory i
+                LEFT JOIN division d ON d.id = i.division
+                WHERE i.productid = :pid
+                GROUP BY i.division, d.description
+                HAVING stock_qty != 0
+                ORDER BY i.division ASC
+            ");
+            $stmtDiv->execute(['pid' => $productId]);
+            $divisionStocks = $stmtDiv->fetchAll() ?: [];
+
+            // Status stok
+            $minStock = (float)($product['minimum'] ?? 0);
+            if ($totalStock <= 0) {
+                $statusText = 'Habis';
+            } elseif ($minStock > 0 && $totalStock <= $minStock) {
+                $statusText = 'Kritis (Di Bawah Minimum)';
+            } else {
+                $statusText = 'Aman';
+            }
+
+            return [
+                'id' => $product['id'],
+                'aliasid' => $product['aliasid'] ?: '-',
+                'name' => $product['name'],
+                'brand' => ($product['brand'] && $product['brand'] !== 'none') ? $product['brand'] : '-',
+                'minimum' => $minStock,
+                'total_stock' => $totalStock,
+                'status_text' => $statusText,
+                'units' => $units,
+                'primary_unit' => $units[0]['name'] ?? 'PCS',
+                'primary_price' => (float)($units[0]['salesprice1'] ?? 0),
+                'formatted_price' => 'Rp ' . number_format((float)($units[0]['salesprice1'] ?? 0), 0, ',', '.'),
+                'division_stocks' => $divisionStocks,
+            ];
+        } catch (\Throwable $e) {
+            Log::error('getProductStockDetail error: ' . $e->getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Get products with critical or zero stock in Acosys V8 for dashboard monitoring.
+     */
+    public function getCriticalStockProducts(AcosysConnection $connection, int $limit = 20): array
+    {
+        try {
+            $pdo = $this->getPdo($connection);
+            $stmt = $pdo->prepare("
+                SELECT p.id, p.name, p.aliasid, p.minimum,
+                       u.name as unit_name, u.salesprice1,
+                       COALESCE(SUM(i.invin - i.invout), 0) as current_stock
+                FROM product p
+                LEFT JOIN units u ON u.productid = p.id AND u.isactive = 1
+                JOIN inventory i ON i.productid = p.id
+                GROUP BY p.id, p.name, p.aliasid, p.minimum, u.name, u.salesprice1
+                HAVING current_stock <= p.minimum OR current_stock <= 0
+                ORDER BY current_stock ASC, p.name ASC
+                LIMIT :limit
+            ");
+            $stmt->bindValue(':limit', $limit, \PDO::PARAM_INT);
+            $stmt->execute();
+
+            return $stmt->fetchAll() ?: [];
+        } catch (\Throwable $e) {
+            Log::error('getCriticalStockProducts error: ' . $e->getMessage());
+            return [];
+        }
+    }
 }

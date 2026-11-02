@@ -115,6 +115,11 @@ Route::middleware('auth')->group(function () {
         Route::get('/', [V8JurnalTeleController::class, 'index'])->name('index');
     });
 
+    // Modul Acosys V8: Cek Stok Produk
+    Route::prefix('modules/v8-cek-stok')->name('modules.v8-cek-stok.')->group(function () {
+        Route::get('/', [\App\Http\Controllers\V8CekStokController::class, 'index'])->name('index');
+    });
+
     // Alias redirect rute lama
     Route::get('/modules/bot-tele', fn() => redirect()->route('modules.v8-buku-besar.index'));
 
