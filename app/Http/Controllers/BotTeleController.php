@@ -391,29 +391,25 @@ class BotTeleController extends Controller
                     return response()->json(['ok' => true]);
                 }
 
-                if (count($matches) === 1) {
-                    $session->state = 'idle';
-                    $session->save();
-                    $this->sendStockReceipt($token, $chatId, $connection, $matches[0]['id'], $session);
-                    $this->sendReplyMenu($token, $chatId, "Silakan pilih menu berikutnya:", $setting->account);
-                    return response()->json(['ok' => true]);
-                }
-
                 $inline = [];
                 foreach ($matches as $m) {
                     $priceFormatted = number_format((float)($m['salesprice1'] ?? 0), 0, ',', '.');
                     $label = "[{$m['id']}] {$m['name']} (Rp {$priceFormatted})";
                     $inline[] = [
-                        ['text' => mb_substr($label, 0, 50), 'callback_data' => "stok_sel:{$m['id']}"]
+                        ['text' => mb_substr($label, 0, 48), 'callback_data' => "stok_sel:{$m['id']}"]
                     ];
                 }
+                $inline[] = [
+                    ['text' => 'Cari Kata Kunci Lain...', 'callback_data' => 'stok_act:retry']
+                ];
                 $inline[] = [
                     ['text' => 'Batalkan', 'callback_data' => 'stok_act:cancel']
                 ];
 
-                $reply = "*Pilih Produk:*\n"
-                    . "Ditemukan " . count($matches) . " produk untuk '{$text}':\n"
-                    . "Klik salah satu produk di bawah:";
+                $reply = "*PILIH PRODUK (Ditemukan " . count($matches) . "):*\n"
+                    . "━━━━━━━━━━━━━━━━━━━━\n"
+                    . "Kata kunci: '{$text}'\n"
+                    . "Silakan klik salah satu produk di bawah untuk melihat rincian stok realtime:";
 
                 $this->sendTelegramMessage($token, $chatId, $reply, ['inline_keyboard' => $inline]);
                 return response()->json(['ok' => true]);
@@ -435,28 +431,24 @@ class BotTeleController extends Controller
                     return response()->json(['ok' => true]);
                 }
 
-                if (count($matches) === 1) {
-                    $session->state = 'idle';
-                    $session->save();
-                    $this->sendCustomerReceivableReceipt($token, $chatId, $connection, $matches[0]['customerid'], $session);
-                    $this->sendReplyMenu($token, $chatId, "Silakan pilih menu berikutnya:", $setting->account);
-                    return response()->json(['ok' => true]);
-                }
-
                 $inline = [];
                 foreach ($matches as $m) {
-                    $label = "[{$m['customerid']}] {$m['name']} ({$m['formatted_balance']})";
+                    $label = "[{$m['customerid']}] " . mb_substr($m['name'], 0, 24) . " ({$m['formatted_balance']})";
                     $inline[] = [
-                        ['text' => mb_substr($label, 0, 50), 'callback_data' => "piutang_sel:{$m['customerid']}"]
+                        ['text' => mb_substr($label, 0, 48), 'callback_data' => "piutang_sel:{$m['customerid']}"]
                     ];
                 }
+                $inline[] = [
+                    ['text' => 'Cari Pelanggan Lain...', 'callback_data' => 'piutang_act:search']
+                ];
                 $inline[] = [
                     [['text' => 'Batalkan', 'callback_data' => 'piutang_act:cancel']]
                 ];
 
-                $reply = "*Pilih Pelanggan:*\n"
-                    . "Ditemukan " . count($matches) . " pelanggan untuk '{$text}':\n"
-                    . "Klik salah satu pelanggan di bawah:";
+                $reply = "*PILIH PELANGGAN (Ditemukan " . count($matches) . "):*\n"
+                    . "━━━━━━━━━━━━━━━━━━━━\n"
+                    . "Kata kunci: '{$text}'\n"
+                    . "Silakan klik salah satu pelanggan di bawah untuk melihat rincian faktur:";
 
                 $this->sendTelegramMessage($token, $chatId, $reply, ['inline_keyboard' => $inline]);
                 return response()->json(['ok' => true]);
@@ -478,28 +470,24 @@ class BotTeleController extends Controller
                     return response()->json(['ok' => true]);
                 }
 
-                if (count($matches) === 1) {
-                    $session->state = 'idle';
-                    $session->save();
-                    $this->sendSupplierPayableReceipt($token, $chatId, $connection, $matches[0]['supplierid'], $session);
-                    $this->sendReplyMenu($token, $chatId, "Silakan pilih menu berikutnya:", $setting->account);
-                    return response()->json(['ok' => true]);
-                }
-
                 $inline = [];
                 foreach ($matches as $m) {
-                    $label = "[{$m['supplierid']}] {$m['name']} ({$m['formatted_balance']})";
+                    $label = "[{$m['supplierid']}] " . mb_substr($m['name'], 0, 24) . " ({$m['formatted_balance']})";
                     $inline[] = [
-                        ['text' => mb_substr($label, 0, 50), 'callback_data' => "hutang_sel:{$m['supplierid']}"]
+                        ['text' => mb_substr($label, 0, 48), 'callback_data' => "hutang_sel:{$m['supplierid']}"]
                     ];
                 }
+                $inline[] = [
+                    ['text' => 'Cari Pemasok Lain...', 'callback_data' => 'hutang_act:search']
+                ];
                 $inline[] = [
                     [['text' => 'Batalkan', 'callback_data' => 'hutang_act:cancel']]
                 ];
 
-                $reply = "*Pilih Pemasok:*\n"
-                    . "Ditemukan " . count($matches) . " pemasok untuk '{$text}':\n"
-                    . "Klik salah satu pemasok di bawah:";
+                $reply = "*PILIH PEMASOK (Ditemukan " . count($matches) . "):*\n"
+                    . "━━━━━━━━━━━━━━━━━━━━\n"
+                    . "Kata kunci: '{$text}'\n"
+                    . "Silakan klik salah satu pemasok di bawah untuk melihat rincian faktur:";
 
                 $this->sendTelegramMessage($token, $chatId, $reply, ['inline_keyboard' => $inline]);
                 return response()->json(['ok' => true]);
@@ -993,6 +981,28 @@ class BotTeleController extends Controller
                 }
                 $this->sendTelegramMessage($token, $chatId, "Pencarian stok telah dibatalkan.");
                 $this->sendReplyMenu($token, $chatId, "Silakan pilih menu di bawah:", $setting->account);
+                return response()->json(['ok' => true]);
+            }
+
+            // Callback Stok: Retry Pencarian
+            if ($data === 'stok_act:retry') {
+                $session = BotTeleSession::where('account_id', $setting->account_id)->where('chat_id', $chatId)->first();
+                if ($session) {
+                    $session->state = 'stok_wait_keyword';
+                    $session->session_data = null;
+                    $session->save();
+                }
+
+                $reply = "*Cek Stok Produk Realtime*\n"
+                    . "━━━━━━━━━━━━━━━━━━━━\n"
+                    . "Silakan ketik *nama produk*, *kode barang*, atau *barcode*:\n\n"
+                    . "_Contoh: Aqua, BTR002, atau 899123456789_";
+
+                $inlineKeyboard = [
+                    [['text' => 'Batalkan', 'callback_data' => 'stok_act:cancel']]
+                ];
+
+                $this->sendTelegramMessage($token, $chatId, $reply, ['inline_keyboard' => $inlineKeyboard]);
                 return response()->json(['ok' => true]);
             }
 

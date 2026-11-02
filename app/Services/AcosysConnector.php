@@ -772,28 +772,87 @@ class AcosysConnector
     }
 
     /**
-     * Search products by ID, alias ID (barcode), or name in Acosys V8.
+     * Search products by ID, alias ID (barcode), or name in Acosys V8 with smart relevance and multi-token matching.
      */
     public function searchProducts(AcosysConnection $connection, string $keyword, int $limit = 8): array
     {
         try {
             $pdo = $this->getPdo($connection);
             $cleanKw = trim($keyword);
-            $stmt = $pdo->prepare("
+            $tokens = array_filter(preg_split('/\s+/', $cleanKw));
+
+            // 1. Pencarian berbasis frase utama dengan ranking relevansi
+            $stmt1 = $pdo->prepare("
                 SELECT p.id, p.name, p.aliasid, p.brand, p.minimum,
-                       u.name as unit_name, u.salesprice1
+                       MIN(u.name) as unit_name, MIN(u.salesprice1) as salesprice1,
+                       CASE 
+                           WHEN p.id = :kw OR p.aliasid = :kw THEN 1
+                           WHEN p.name = :kw THEN 2
+                           WHEN p.name LIKE :kw_start THEN 3
+                           WHEN p.name LIKE :kw_like THEN 4
+                           ELSE 5
+                       END as relevance
                 FROM product p
                 LEFT JOIN units u ON u.productid = p.id AND u.isactive = 1
                 WHERE p.id = :kw OR p.aliasid = :kw OR p.name LIKE :kw_like
-                ORDER BY p.name ASC
+                GROUP BY p.id, p.name, p.aliasid, p.brand, p.minimum
+                ORDER BY relevance ASC, p.name ASC
                 LIMIT :limit
             ");
-            $stmt->bindValue(':kw', $cleanKw);
-            $stmt->bindValue(':kw_like', "%{$cleanKw}%");
-            $stmt->bindValue(':limit', $limit, \PDO::PARAM_INT);
-            $stmt->execute();
+            $stmt1->bindValue(':kw', $cleanKw);
+            $stmt1->bindValue(':kw_start', "{$cleanKw}%");
+            $stmt1->bindValue(':kw_like', "%{$cleanKw}%");
+            $stmt1->bindValue(':limit', $limit, \PDO::PARAM_INT);
+            $stmt1->execute();
+            $results = $stmt1->fetchAll() ?: [];
 
-            return $stmt->fetchAll() ?: [];
+            // 2. Jika hasil masih kosong dan kata kunci multi-kata, gunakan pencarian per token (AND)
+            if (empty($results) && count($tokens) > 1) {
+                $whereClauses = [];
+                $params = [];
+                foreach ($tokens as $idx => $token) {
+                    $whereClauses[] = "p.name LIKE :token_{$idx}";
+                    $params["token_{$idx}"] = "%{$token}%";
+                }
+                $sql = "
+                    SELECT p.id, p.name, p.aliasid, p.brand, p.minimum,
+                           MIN(u.name) as unit_name, MIN(u.salesprice1) as salesprice1
+                    FROM product p
+                    LEFT JOIN units u ON u.productid = p.id AND u.isactive = 1
+                    WHERE " . implode(' AND ', $whereClauses) . "
+                    GROUP BY p.id, p.name, p.aliasid, p.brand, p.minimum
+                    ORDER BY p.name ASC
+                    LIMIT :limit
+                ";
+                $stmt2 = $pdo->prepare($sql);
+                foreach ($params as $k => $v) {
+                    $stmt2->bindValue(":{$k}", $v);
+                }
+                $stmt2->bindValue(':limit', $limit, \PDO::PARAM_INT);
+                $stmt2->execute();
+                $results = $stmt2->fetchAll() ?: [];
+            }
+
+            // 3. Fallback pencarian terdekat jika masih kosong (potongan awalan 3 karakter)
+            if (empty($results) && mb_strlen($cleanKw) >= 3) {
+                $prefix = mb_substr($cleanKw, 0, 3);
+                $stmt3 = $pdo->prepare("
+                    SELECT p.id, p.name, p.aliasid, p.brand, p.minimum,
+                           MIN(u.name) as unit_name, MIN(u.salesprice1) as salesprice1
+                    FROM product p
+                    LEFT JOIN units u ON u.productid = p.id AND u.isactive = 1
+                    WHERE p.name LIKE :prefix
+                    GROUP BY p.id, p.name, p.aliasid, p.brand, p.minimum
+                    ORDER BY p.name ASC
+                    LIMIT :limit
+                ");
+                $stmt3->bindValue(':prefix', "%{$prefix}%");
+                $stmt3->bindValue(':limit', $limit, \PDO::PARAM_INT);
+                $stmt3->execute();
+                $results = $stmt3->fetchAll() ?: [];
+            }
+
+            return $results;
         } catch (\Throwable $e) {
             Log::error('searchProducts error: ' . $e->getMessage());
             return [];
@@ -984,31 +1043,92 @@ class AcosysConnector
     }
 
     /**
-     * Search customers by ID or name with outstanding receivable.
+     * Search customers by ID or name with outstanding receivable, with smart relevance and multi-token matching.
      */
     public function searchCustomerReceivables(AcosysConnection $connection, string $keyword, int $limit = 8): array
     {
         try {
             $pdo = $this->getPdo($connection);
             $cleanKw = trim($keyword);
-            $stmt = $pdo->prepare("
+            $tokens = array_filter(preg_split('/\s+/', $cleanKw));
+
+            // 1. Pencarian berbasis ID atau frase nama utama
+            $stmt1 = $pdo->prepare("
                 SELECT cb.customerid, COALESCE(c.name, cb.customerid) as name,
                        COALESCE(c.mobilephone, c.telephone, '-') as phone, c.address,
-                       (SUM(cb.debit) - SUM(cb.credit)) as balance
+                       (SUM(cb.debit) - SUM(cb.credit)) as balance,
+                       CASE 
+                           WHEN cb.customerid = :kw THEN 1
+                           WHEN c.name = :kw THEN 2
+                           WHEN c.name LIKE :kw_start THEN 3
+                           WHEN c.name LIKE :kw_like THEN 4
+                           ELSE 5
+                       END as relevance
                 FROM customerbalance cb
                 LEFT JOIN customer c ON c.id = cb.customerid
                 WHERE cb.customerid = :kw OR c.name LIKE :kw_like
                 GROUP BY cb.customerid, c.name, c.mobilephone, c.telephone, c.address
                 HAVING balance > 0
-                ORDER BY balance DESC
+                ORDER BY relevance ASC, balance DESC
                 LIMIT :limit
             ");
-            $stmt->bindValue(':kw', $cleanKw);
-            $stmt->bindValue(':kw_like', "%{$cleanKw}%");
-            $stmt->bindValue(':limit', $limit, \PDO::PARAM_INT);
-            $stmt->execute();
+            $stmt1->bindValue(':kw', $cleanKw);
+            $stmt1->bindValue(':kw_start', "{$cleanKw}%");
+            $stmt1->bindValue(':kw_like', "%{$cleanKw}%");
+            $stmt1->bindValue(':limit', $limit, \PDO::PARAM_INT);
+            $stmt1->execute();
+            $rows = $stmt1->fetchAll() ?: [];
 
-            $rows = $stmt->fetchAll() ?: [];
+            // 2. Jika kosong dan kata kunci multi-kata, gunakan pencarian per token (AND)
+            if (empty($rows) && count($tokens) > 1) {
+                $whereClauses = [];
+                $params = [];
+                foreach ($tokens as $idx => $token) {
+                    $whereClauses[] = "c.name LIKE :token_{$idx}";
+                    $params["token_{$idx}"] = "%{$token}%";
+                }
+                $sql = "
+                    SELECT cb.customerid, COALESCE(c.name, cb.customerid) as name,
+                           COALESCE(c.mobilephone, c.telephone, '-') as phone, c.address,
+                           (SUM(cb.debit) - SUM(cb.credit)) as balance
+                    FROM customerbalance cb
+                    LEFT JOIN customer c ON c.id = cb.customerid
+                    WHERE " . implode(' AND ', $whereClauses) . "
+                    GROUP BY cb.customerid, c.name, c.mobilephone, c.telephone, c.address
+                    HAVING balance > 0
+                    ORDER BY balance DESC
+                    LIMIT :limit
+                ";
+                $stmt2 = $pdo->prepare($sql);
+                foreach ($params as $k => $v) {
+                    $stmt2->bindValue(":{$k}", $v);
+                }
+                $stmt2->bindValue(':limit', $limit, \PDO::PARAM_INT);
+                $stmt2->execute();
+                $rows = $stmt2->fetchAll() ?: [];
+            }
+
+            // 3. Fallback pencarian terdekat jika masih kosong (awalan 3 karakter)
+            if (empty($rows) && mb_strlen($cleanKw) >= 3) {
+                $prefix = mb_substr($cleanKw, 0, 3);
+                $stmt3 = $pdo->prepare("
+                    SELECT cb.customerid, COALESCE(c.name, cb.customerid) as name,
+                           COALESCE(c.mobilephone, c.telephone, '-') as phone, c.address,
+                           (SUM(cb.debit) - SUM(cb.credit)) as balance
+                    FROM customerbalance cb
+                    LEFT JOIN customer c ON c.id = cb.customerid
+                    WHERE c.name LIKE :prefix
+                    GROUP BY cb.customerid, c.name, c.mobilephone, c.telephone, c.address
+                    HAVING balance > 0
+                    ORDER BY balance DESC
+                    LIMIT :limit
+                ");
+                $stmt3->bindValue(':prefix', "%{$prefix}%");
+                $stmt3->bindValue(':limit', $limit, \PDO::PARAM_INT);
+                $stmt3->execute();
+                $rows = $stmt3->fetchAll() ?: [];
+            }
+
             foreach ($rows as &$r) {
                 $r['balance'] = (float)$r['balance'];
                 $r['formatted_balance'] = 'Rp ' . number_format($r['balance'], 0, ',', '.');
@@ -1153,31 +1273,92 @@ class AcosysConnector
     }
 
     /**
-     * Search suppliers by ID or name with outstanding payable balance.
+     * Search suppliers by ID or name with outstanding payable balance, with smart relevance and multi-token matching.
      */
     public function searchSupplierPayables(AcosysConnection $connection, string $keyword, int $limit = 8): array
     {
         try {
             $pdo = $this->getPdo($connection);
             $cleanKw = trim($keyword);
-            $stmt = $pdo->prepare("
+            $tokens = array_filter(preg_split('/\s+/', $cleanKw));
+
+            // 1. Pencarian berbasis ID atau frase nama utama
+            $stmt1 = $pdo->prepare("
                 SELECT sb.supplierid, COALESCE(s.name, sb.supplierid) as name,
                        COALESCE(s.mobilephone, s.telephone, '-') as phone, s.address,
-                       (SUM(sb.debit) - SUM(sb.credit)) as balance
+                       (SUM(sb.debit) - SUM(sb.credit)) as balance,
+                       CASE 
+                           WHEN sb.supplierid = :kw THEN 1
+                           WHEN s.name = :kw THEN 2
+                           WHEN s.name LIKE :kw_start THEN 3
+                           WHEN s.name LIKE :kw_like THEN 4
+                           ELSE 5
+                       END as relevance
                 FROM supplierbalance sb
                 LEFT JOIN supplier s ON s.id = sb.supplierid
                 WHERE sb.supplierid = :kw OR s.name LIKE :kw_like
                 GROUP BY sb.supplierid, s.name, s.mobilephone, s.telephone, s.address
                 HAVING balance > 0
-                ORDER BY balance DESC
+                ORDER BY relevance ASC, balance DESC
                 LIMIT :limit
             ");
-            $stmt->bindValue(':kw', $cleanKw);
-            $stmt->bindValue(':kw_like', "%{$cleanKw}%");
-            $stmt->bindValue(':limit', $limit, \PDO::PARAM_INT);
-            $stmt->execute();
+            $stmt1->bindValue(':kw', $cleanKw);
+            $stmt1->bindValue(':kw_start', "{$cleanKw}%");
+            $stmt1->bindValue(':kw_like', "%{$cleanKw}%");
+            $stmt1->bindValue(':limit', $limit, \PDO::PARAM_INT);
+            $stmt1->execute();
+            $rows = $stmt1->fetchAll() ?: [];
 
-            $rows = $stmt->fetchAll() ?: [];
+            // 2. Jika kosong dan kata kunci multi-kata, gunakan pencarian per token (AND)
+            if (empty($rows) && count($tokens) > 1) {
+                $whereClauses = [];
+                $params = [];
+                foreach ($tokens as $idx => $token) {
+                    $whereClauses[] = "s.name LIKE :token_{$idx}";
+                    $params["token_{$idx}"] = "%{$token}%";
+                }
+                $sql = "
+                    SELECT sb.supplierid, COALESCE(s.name, sb.supplierid) as name,
+                           COALESCE(s.mobilephone, s.telephone, '-') as phone, s.address,
+                           (SUM(sb.debit) - SUM(sb.credit)) as balance
+                    FROM supplierbalance sb
+                    LEFT JOIN supplier s ON s.id = sb.supplierid
+                    WHERE " . implode(' AND ', $whereClauses) . "
+                    GROUP BY sb.supplierid, s.name, s.mobilephone, s.telephone, s.address
+                    HAVING balance > 0
+                    ORDER BY balance DESC
+                    LIMIT :limit
+                ";
+                $stmt2 = $pdo->prepare($sql);
+                foreach ($params as $k => $v) {
+                    $stmt2->bindValue(":{$k}", $v);
+                }
+                $stmt2->bindValue(':limit', $limit, \PDO::PARAM_INT);
+                $stmt2->execute();
+                $rows = $stmt2->fetchAll() ?: [];
+            }
+
+            // 3. Fallback pencarian terdekat jika masih kosong (awalan 3 karakter)
+            if (empty($rows) && mb_strlen($cleanKw) >= 3) {
+                $prefix = mb_substr($cleanKw, 0, 3);
+                $stmt3 = $pdo->prepare("
+                    SELECT sb.supplierid, COALESCE(s.name, sb.supplierid) as name,
+                           COALESCE(s.mobilephone, s.telephone, '-') as phone, s.address,
+                           (SUM(sb.debit) - SUM(sb.credit)) as balance
+                    FROM supplierbalance sb
+                    LEFT JOIN supplier s ON s.id = sb.supplierid
+                    WHERE s.name LIKE :prefix
+                    GROUP BY sb.supplierid, s.name, s.mobilephone, s.telephone, s.address
+                    HAVING balance > 0
+                    ORDER BY balance DESC
+                    LIMIT :limit
+                ");
+                $stmt3->bindValue(':prefix', "%{$prefix}%");
+                $stmt3->bindValue(':limit', $limit, \PDO::PARAM_INT);
+                $stmt3->execute();
+                $rows = $stmt3->fetchAll() ?: [];
+            }
+
             foreach ($rows as &$r) {
                 $r['balance'] = (float)$r['balance'];
                 $r['formatted_balance'] = 'Rp ' . number_format($r['balance'], 0, ',', '.');
