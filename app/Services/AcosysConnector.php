@@ -1188,13 +1188,27 @@ class AcosysConnector
                 $inv['is_overdue'] = !empty($inv['due_date']) && strtotime($inv['due_date']) < strtotime(date('Y-m-d'));
             }
 
+            $stmtNet = $pdo->prepare("
+                SELECT (COALESCE(SUM(debit), 0) - COALESCE(SUM(credit), 0)) as net_balance
+                FROM customerbalance
+                WHERE customerid = :cid
+            ");
+            $stmtNet->execute(['cid' => $customerId]);
+            $netBalance = (float)$stmtNet->fetchColumn();
+
+            $depositCredit = max(0, $totalBalance - $netBalance);
+
             return [
                 'id' => $cust['id'],
                 'name' => $cust['name'],
                 'phone' => $cust['mobilephone'] ?: ($cust['telephone'] ?: '-'),
                 'address' => $cust['address'] ?: '-',
                 'total_balance' => $totalBalance,
-                'formatted_balance' => 'Rp ' . number_format($totalBalance, 0, ',', '.'),
+                'net_balance' => $netBalance,
+                'deposit_credit' => $depositCredit,
+                'formatted_balance' => 'Rp ' . number_format($netBalance, 0, ',', '.'),
+                'formatted_gross' => 'Rp ' . number_format($totalBalance, 0, ',', '.'),
+                'formatted_deposit' => 'Rp ' . number_format($depositCredit, 0, ',', '.'),
                 'invoices' => $invoices,
             ];
         } catch (\Throwable $e) {
@@ -1418,13 +1432,27 @@ class AcosysConnector
                 $inv['is_overdue'] = !empty($inv['due_date']) && strtotime($inv['due_date']) < strtotime(date('Y-m-d'));
             }
 
+            $stmtNet = $pdo->prepare("
+                SELECT (COALESCE(SUM(debit), 0) - COALESCE(SUM(credit), 0)) as net_balance
+                FROM supplierbalance
+                WHERE supplierid = :sid
+            ");
+            $stmtNet->execute(['sid' => $supplierId]);
+            $netBalance = (float)$stmtNet->fetchColumn();
+
+            $depositCredit = max(0, $totalBalance - $netBalance);
+
             return [
                 'id' => $supp['id'],
                 'name' => $supp['name'],
                 'phone' => $supp['mobilephone'] ?: ($supp['telephone'] ?: '-'),
                 'address' => $supp['address'] ?: '-',
                 'total_balance' => $totalBalance,
-                'formatted_balance' => 'Rp ' . number_format($totalBalance, 0, ',', '.'),
+                'net_balance' => $netBalance,
+                'deposit_credit' => $depositCredit,
+                'formatted_balance' => 'Rp ' . number_format($netBalance, 0, ',', '.'),
+                'formatted_gross' => 'Rp ' . number_format($totalBalance, 0, ',', '.'),
+                'formatted_deposit' => 'Rp ' . number_format($depositCredit, 0, ',', '.'),
                 'invoices' => $invoices,
             ];
         } catch (\Throwable $e) {

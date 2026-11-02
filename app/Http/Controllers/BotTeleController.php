@@ -1455,14 +1455,21 @@ class BotTeleController extends Controller
             $invLines[] = "- Tidak ada faktur penjualan aktif.";
         }
 
+        $depositText = '';
+        if (($detail['deposit_credit'] ?? 0) > 0) {
+            $depositText = "Total Faktur Belum Lunas : {$detail['formatted_gross']}\n"
+                . "Titipan / Kredit Gantung : -{$detail['formatted_deposit']}\n";
+        }
+
         $receipt = "*KARTU PIUTANG PELANGGAN*\n"
             . "━━━━━━━━━━━━━━━━━━━━\n"
             . "Pelanggan : *{$detail['name']}* (`{$detail['id']}`)\n"
             . "No. Telp  : {$detail['phone']}\n"
             . "Alamat    : {$detail['address']}\n"
             . "━━━━━━━━━━━━━━━━━━━━\n"
-            . "*Total Piutang : {$detail['formatted_balance']}*\n"
-            . "Jumlah Faktur : " . count($detail['invoices']) . " Lembar\n"
+            . $depositText
+            . "*Total Piutang Bersih: {$detail['formatted_balance']}*\n"
+            . "Jumlah Faktur Aktif  : " . count($detail['invoices']) . " Lembar\n"
             . "━━━━━━━━━━━━━━━━━━━━\n"
             . "Rincian Faktur Belum Lunas:\n"
             . implode("\n\n", $invLines) . "\n"
@@ -1496,14 +1503,21 @@ class BotTeleController extends Controller
             $invLines[] = "- Tidak ada faktur pembelian aktif.";
         }
 
+        $suppDepositText = '';
+        if (($detail['deposit_credit'] ?? 0) > 0) {
+            $suppDepositText = "Total Faktur Belum Lunas : {$detail['formatted_gross']}\n"
+                . "Titipan / Kredit Gantung : -{$detail['formatted_deposit']}\n";
+        }
+
         $receipt = "*KARTU HUTANG PEMASOK*\n"
             . "━━━━━━━━━━━━━━━━━━━━\n"
             . "Pemasok   : *{$detail['name']}* (`{$detail['id']}`)\n"
             . "No. Telp  : {$detail['phone']}\n"
             . "Alamat    : {$detail['address']}\n"
             . "━━━━━━━━━━━━━━━━━━━━\n"
-            . "*Total Hutang : {$detail['formatted_balance']}*\n"
-            . "Jumlah Faktur : " . count($detail['invoices']) . " Lembar\n"
+            . $suppDepositText
+            . "*Total Hutang Bersih : {$detail['formatted_balance']}*\n"
+            . "Jumlah Faktur Aktif  : " . count($detail['invoices']) . " Lembar\n"
             . "━━━━━━━━━━━━━━━━━━━━\n"
             . "Rincian Faktur Belum Lunas:\n"
             . implode("\n\n", $invLines) . "\n"
